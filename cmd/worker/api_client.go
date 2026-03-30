@@ -23,6 +23,8 @@ type HermeswaClient struct {
 	RefreshToken string
 	ExpiresAt    time.Time
 
+	authMu sync.Mutex // protects AccessToken, RefreshToken, ExpiresAt
+
 	// Caching instances to reduce API load
 	mu                sync.RWMutex
 	allInstancesCache []struct {
@@ -60,19 +62,22 @@ func NewHermeswaClient(baseURL, username, password string) *HermeswaClient {
 }
 
 func (c *HermeswaClient) EnsureAuth() error {
+	c.authMu.Lock()
+	defer c.authMu.Unlock()
+
 	if c.AccessToken == "" || time.Now().After(c.ExpiresAt) {
 		if c.RefreshToken != "" {
-			err := c.Refresh()
+			err := c.refresh()
 			if err == nil {
 				return nil
 			}
 		}
-		return c.Login()
+		return c.login()
 	}
 	return nil
 }
 
-func (c *HermeswaClient) Login() error {
+func (c *HermeswaClient) login() error {
 	payload, _ := json.Marshal(map[string]string{
 		"username": c.Username,
 		"password": c.Password,
@@ -100,7 +105,7 @@ func (c *HermeswaClient) Login() error {
 	return nil
 }
 
-func (c *HermeswaClient) Refresh() error {
+func (c *HermeswaClient) refresh() error {
 	payload, _ := json.Marshal(map[string]string{
 		"refresh_token": c.RefreshToken,
 	})
@@ -124,6 +129,12 @@ func (c *HermeswaClient) Refresh() error {
 	c.ExpiresAt = time.Now().Add(50 * time.Minute)
 
 	return nil
+}
+
+func (c *HermeswaClient) getToken() string {
+	c.authMu.Lock()
+	defer c.authMu.Unlock()
+	return c.AccessToken
 }
 
 func (c *HermeswaClient) GetInstances(circle string) ([]InstanceInfo, error) {
@@ -150,7 +161,7 @@ func (c *HermeswaClient) GetInstances(circle string) ([]InstanceInfo, error) {
 	}
 
 	req, _ := http.NewRequest("GET", c.BaseURL+"/api/instances?all=true", nil)
-	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+c.getToken())
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -196,7 +207,7 @@ func (c *HermeswaClient) SendMessage(instanceID, to, message string) (bool, stri
 
 	url := fmt.Sprintf("%s/api/send/%s", c.BaseURL, instanceID)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+c.getToken())
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -227,7 +238,7 @@ func (c *HermeswaClient) SendGroupMessage(instanceID, groupID, message string) (
 
 	url := fmt.Sprintf("%s/api/send-group/%s", c.BaseURL, instanceID)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+c.getToken())
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -259,7 +270,7 @@ func (c *HermeswaClient) SendMediaURL(instanceID, to, mediaURL, caption string) 
 
 	url := fmt.Sprintf("%s/api/send/%s/media-url", c.BaseURL, instanceID)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+c.getToken())
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -291,7 +302,7 @@ func (c *HermeswaClient) SendGroupMediaURL(instanceID, groupID, mediaURL, captio
 
 	url := fmt.Sprintf("%s/api/send-group/%s/media-url", c.BaseURL, instanceID)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+c.getToken())
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
