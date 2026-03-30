@@ -7,6 +7,7 @@ import {
   Send,
   Paperclip,
   Smartphone,
+  Phone,
   ChevronDown,
   Users as UsersIcon,
   User as UserIcon,
@@ -30,8 +31,11 @@ interface ChatMessage {
 }
 
 type LeftTab = "contacts" | "groups" | "check"
+type SendMode = "instance" | "phone"
 
 export function MessagesPage() {
+  const [sendMode, setSendMode] = useState<SendMode>("instance")
+  const [senderPhone, setSenderPhone] = useState("")
   const [instances, setInstances] = useState<Instance[]>([])
   const [selectedInstance, setSelectedInstance] = useState("")
   const [recipient, setRecipient] = useState("")
@@ -104,9 +108,9 @@ export function MessagesPage() {
     }
   }, [selectedInstance, fetchContacts, fetchGroups])
 
-  // WebSocket for incoming messages
+  // WebSocket for incoming messages (instance mode only)
   useEffect(() => {
-    if (!selectedInstance) return
+    if (!selectedInstance || sendMode !== "instance") return
     const token = localStorage.getItem("access_token")
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
     const wsUrl = `${proto}//${window.location.host}/api/listen/${selectedInstance}?token=${token}`
@@ -132,9 +136,24 @@ export function MessagesPage() {
       } catch { /* ignore */ }
     }
     return () => { ws.close(); wsRef.current = null; setWsConnected(false) }
-  }, [selectedInstance])
+  }, [selectedInstance, sendMode])
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
+
+  const handleModeSwitch = (mode: SendMode) => {
+    setSendMode(mode)
+    setRecipient("")
+    setRecipientName("")
+    setIsGroup(false)
+    setMessages([])
+    if (mode === "phone") {
+      setSelectedInstance("")
+    } else {
+      setSenderPhone("")
+    }
+  }
+
+  const senderReady = sendMode === "instance" ? !!selectedInstance : !!senderPhone
 
   const selectContact = (phone: string, name: string, group: boolean) => {
     setRecipient(phone)
@@ -143,10 +162,12 @@ export function MessagesPage() {
   }
 
   const handleSend = useCallback(async () => {
-    if (!message.trim() || !selectedInstance || !recipient.trim()) return
+    if (!message.trim() || !senderReady || !recipient.trim()) return
     setSending(true)
     try {
-      const endpoint = isGroup ? `/api/send-group/${selectedInstance}` : `/api/send/${selectedInstance}`
+      const endpoint = sendMode === "phone"
+        ? (isGroup ? `/api/send-group/by-number/${senderPhone}` : `/api/by-number/${senderPhone}`)
+        : (isGroup ? `/api/send-group/${selectedInstance}` : `/api/send/${selectedInstance}`)
       const body = isGroup ? { groupJid: recipient, message } : { to: recipient, message }
       const res = await api.post<ApiResponse>(endpoint, body)
       if (res.data.success) {
@@ -156,13 +177,15 @@ export function MessagesPage() {
         setMessage("")
       } else { toast.error(res.data.message) }
     } catch { toast.error("Failed to send message") } finally { setSending(false) }
-  }, [message, selectedInstance, recipient, isGroup])
+  }, [message, senderReady, recipient, isGroup, sendMode, senderPhone, selectedInstance])
 
   const handleSendMedia = async () => {
-    if (!mediaUrl || !selectedInstance || !recipient) return
+    if (!mediaUrl || !senderReady || !recipient) return
     setSendingMedia(true)
     try {
-      const endpoint = isGroup ? `/api/send-group/${selectedInstance}/media-url` : `/api/send/${selectedInstance}/media-url`
+      const endpoint = sendMode === "phone"
+        ? (isGroup ? `/api/send-group/by-number/${senderPhone}/media-url` : `/api/by-number/${senderPhone}/media-url`)
+        : (isGroup ? `/api/send-group/${selectedInstance}/media-url` : `/api/send/${selectedInstance}/media-url`)
       const body = isGroup
         ? { groupJid: recipient, mediaUrl, caption: mediaCaption || undefined }
         : { to: recipient, mediaUrl, caption: mediaCaption || undefined }
@@ -181,13 +204,15 @@ export function MessagesPage() {
 
   const handleSendMediaFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !selectedInstance || !recipient) return
+    if (!file || !senderReady || !recipient) return
     setSendingMedia(true)
     const formData = new FormData()
     formData.append("file", file)
     formData.append(isGroup ? "groupJid" : "to", recipient)
     try {
-      const endpoint = isGroup ? `/api/send-group/${selectedInstance}/media` : `/api/send/${selectedInstance}/media`
+      const endpoint = sendMode === "phone"
+        ? (isGroup ? `/api/send-group/by-number/${senderPhone}/media` : `/api/by-number/${senderPhone}/media-file`)
+        : (isGroup ? `/api/send-group/${selectedInstance}/media` : `/api/send/${selectedInstance}/media`)
       const res = await api.post<ApiResponse>(endpoint, formData, { headers: { "Content-Type": "multipart/form-data" } })
       if (res.data.success) {
         toast.success("Media sent")
@@ -218,20 +243,46 @@ export function MessagesPage() {
       <div className="w-72 shrink-0 flex flex-col gap-3">
         <h2 className="text-xl font-bold text-cyber-green">Messages</h2>
 
-        {/* Instance Selector */}
-        <Card className="p-3">
-          <label className="text-[10px] text-cyber-green-dim uppercase tracking-wider block mb-1.5">
-            <Smartphone size={10} className="inline mr-1" /> Instance
-          </label>
-          <div className="relative">
-            <select value={selectedInstance} onChange={(e) => { setSelectedInstance(e.target.value); setMessages([]); setRecipient(""); setRecipientName("") }}
-              className="w-full bg-bg-input border border-border text-cyber-green px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-cyber-green/50 appearance-none cursor-pointer">
-              <option value="">Select instance</option>
-              {instances.map((inst) => <option key={inst.instanceId} value={inst.instanceId}>{inst.instanceId} {inst.phoneNumber ? `(${inst.phoneNumber})` : ""}</option>)}
-            </select>
-            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-cyber-green-muted pointer-events-none" />
-          </div>
-        </Card>
+        {/* Send Mode Toggle */}
+        <div className="flex border border-border">
+          <button onClick={() => handleModeSwitch("instance")}
+            className={`flex-1 py-1.5 text-[10px] text-center cursor-pointer transition-colors flex items-center justify-center gap-1 ${sendMode === "instance" ? "text-cyber-green bg-cyber-green/10 border-b-2 border-cyber-green" : "text-cyber-green-muted hover:text-cyber-green"}`}>
+            <Smartphone size={10} /> By Instance
+          </button>
+          <button onClick={() => handleModeSwitch("phone")}
+            className={`flex-1 py-1.5 text-[10px] text-center cursor-pointer transition-colors flex items-center justify-center gap-1 ${sendMode === "phone" ? "text-cyber-green bg-cyber-green/10 border-b-2 border-cyber-green" : "text-cyber-green-muted hover:text-cyber-green"}`}>
+            <Phone size={10} /> By Phone
+          </button>
+        </div>
+
+        {/* Instance Selector (instance mode) */}
+        {sendMode === "instance" && (
+          <Card className="p-3">
+            <label className="text-[10px] text-cyber-green-dim uppercase tracking-wider block mb-1.5">
+              <Smartphone size={10} className="inline mr-1" /> Instance
+            </label>
+            <div className="relative">
+              <select value={selectedInstance} onChange={(e) => { setSelectedInstance(e.target.value); setMessages([]); setRecipient(""); setRecipientName("") }}
+                className="w-full bg-bg-input border border-border text-cyber-green px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-cyber-green/50 appearance-none cursor-pointer">
+                <option value="">Select instance</option>
+                {instances.map((inst) => <option key={inst.instanceId} value={inst.instanceId}>{inst.instanceId} {inst.phoneNumber ? `(${inst.phoneNumber})` : ""}</option>)}
+              </select>
+              <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-cyber-green-muted pointer-events-none" />
+            </div>
+          </Card>
+        )}
+
+        {/* Phone Number Input (phone mode) */}
+        {sendMode === "phone" && (
+          <Card className="p-3">
+            <label className="text-[10px] text-cyber-green-dim uppercase tracking-wider block mb-1.5">
+              <Phone size={10} className="inline mr-1" /> Sender Phone Number
+            </label>
+            <input value={senderPhone} onChange={(e) => { setSenderPhone(e.target.value); setMessages([]); setRecipient(""); setRecipientName("") }}
+              placeholder="905xxxxxxxxx"
+              className="w-full bg-bg-input border border-border text-cyber-green px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-cyber-green/50" />
+          </Card>
+        )}
 
         {/* Current Recipient */}
         {recipient && (
@@ -246,8 +297,8 @@ export function MessagesPage() {
           </Card>
         )}
 
-        {/* Tabs */}
-        {selectedInstance && (
+        {/* Tabs (instance mode only) */}
+        {sendMode === "instance" && selectedInstance && (
           <>
             <div className="flex border-b border-border">
               <button onClick={() => setLeftTab("contacts")} className={tabClass("contacts")}><UserIcon size={10} className="inline mr-0.5" /> Contacts</button>
@@ -321,13 +372,32 @@ export function MessagesPage() {
           </>
         )}
 
-        {/* WS Status */}
+        {/* Phone mode: manual recipient input */}
+        {sendMode === "phone" && senderPhone && (
+          <Card className="p-3 space-y-2">
+            <label className="text-[10px] text-cyber-green-dim uppercase tracking-wider block">Recipient</label>
+            <input value={recipient} onChange={(e) => { setRecipient(e.target.value); setRecipientName("") }}
+              placeholder="905xxxxxxxxx or group JID"
+              className="w-full bg-bg-input border border-border text-cyber-green px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-cyber-green/50" />
+            <label className="flex items-center gap-2 text-[10px] text-cyber-green cursor-pointer">
+              <input type="checkbox" checked={isGroup} onChange={(e) => setIsGroup(e.target.checked)} className="accent-cyber-green" />
+              Group Message
+            </label>
+          </Card>
+        )}
+
+        {/* WS Status (instance mode only) */}
         <div className="mt-auto">
-          <div className="flex items-center gap-2 px-1">
-            <span className={`w-1.5 h-1.5 rounded-full ${wsConnected ? "bg-cyber-green animate-pulse" : "bg-cyber-green-muted"}`} />
-            <span className="text-[10px] text-cyber-green-muted">{wsConnected ? "Live" : selectedInstance ? "Connecting..." : "Idle"}</span>
-            {messages.length > 0 && <Badge variant="info" className="ml-auto">{messages.length}</Badge>}
-          </div>
+          {sendMode === "instance" && (
+            <div className="flex items-center gap-2 px-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${wsConnected ? "bg-cyber-green animate-pulse" : "bg-cyber-green-muted"}`} />
+              <span className="text-[10px] text-cyber-green-muted">{wsConnected ? "Live" : selectedInstance ? "Connecting..." : "Idle"}</span>
+              {messages.length > 0 && <Badge variant="info" className="ml-auto">{messages.length}</Badge>}
+            </div>
+          )}
+          {sendMode === "phone" && senderPhone && (
+            <p className="text-[10px] text-cyber-green-muted px-1">Sending via phone: {senderPhone}</p>
+          )}
         </div>
       </div>
 
@@ -358,10 +428,10 @@ export function MessagesPage() {
 
         {/* Chat messages */}
         <Card className="flex-1 overflow-y-auto mb-2 min-h-0">
-          {!selectedInstance ? (
-            <div className="flex items-center justify-center h-full"><p className="text-cyber-green-muted text-sm">Select an instance to start messaging</p></div>
+          {!senderReady ? (
+            <div className="flex items-center justify-center h-full"><p className="text-cyber-green-muted text-sm">{sendMode === "phone" ? "Enter a sender phone number" : "Select an instance to start messaging"}</p></div>
           ) : !recipient ? (
-            <div className="flex items-center justify-center h-full"><p className="text-cyber-green-muted text-sm">Select a contact or group from the left panel</p></div>
+            <div className="flex items-center justify-center h-full"><p className="text-cyber-green-muted text-sm">{sendMode === "phone" ? "Enter a recipient number" : "Select a contact or group from the left panel"}</p></div>
           ) : messages.length === 0 ? (
             <div className="flex items-center justify-center h-full"><p className="text-cyber-green-muted text-sm">No messages yet</p></div>
           ) : (
@@ -382,15 +452,15 @@ export function MessagesPage() {
 
         {/* Input bar */}
         <div className="flex gap-2">
-          <Button variant="ghost" size="md" onClick={() => setShowMediaForm(!showMediaForm)} disabled={!selectedInstance || !recipient}>
+          <Button variant="ghost" size="md" onClick={() => setShowMediaForm(!showMediaForm)} disabled={!senderReady || !recipient}>
             <Paperclip size={16} />
           </Button>
           <input value={message} onChange={(e) => setMessage(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-            placeholder={!selectedInstance ? "Select an instance" : !recipient ? "Select a contact" : "Type a message..."}
-            disabled={!selectedInstance || !recipient}
+            placeholder={!senderReady ? (sendMode === "phone" ? "Enter sender phone number" : "Select an instance") : !recipient ? "Select a contact" : "Type a message..."}
+            disabled={!senderReady || !recipient}
             className="flex-1 bg-bg-input border border-border text-cyber-green placeholder-cyber-green-muted/50 px-3 py-2 text-sm font-mono focus:outline-none focus:border-cyber-green/50 transition-all" />
-          <Button onClick={handleSend} loading={sending} disabled={!selectedInstance || !recipient || !message.trim()}>
+          <Button onClick={handleSend} loading={sending} disabled={!senderReady || !recipient || !message.trim()}>
             <Send size={16} />
           </Button>
         </div>
