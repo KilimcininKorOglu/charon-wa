@@ -2,6 +2,7 @@
 package model
 
 import (
+	"strconv"
 	"time"
 
 	"hermeswa/database"
@@ -49,23 +50,35 @@ func IsTokenBlacklisted(token string) (bool, error) {
 	return count > 0, nil
 }
 
-// BlacklistAllUserTokens blacklists all tokens for a user (for password change)
+// BlacklistAllUserTokens inserts a marker that invalidates all tokens for a user
 func BlacklistAllUserTokens(userID int64, reason string) error {
 	db := database.AppDB
 
-	// We can't blacklist tokens we don't know about, so this is a placeholder
-	// In practice, we'll blacklist tokens as they're used
-	// For now, we just mark in the database that all tokens before this time are invalid
-
 	query := `
 		INSERT INTO token_blacklist (token, user_id, reason, expires_at)
-		VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour')
+		VALUES ($1, $2, $3, NOW() + INTERVAL '24 hours')
 	`
 
-	// Use a special marker token for "all tokens before this time"
-	markerToken := "USER_" + string(rune(userID)) + "_INVALIDATE_ALL"
+	markerToken := "USER_" + strconv.FormatInt(userID, 10) + "_INVALIDATE_ALL"
 	_, err := db.Exec(query, markerToken, userID, reason)
 	return err
+}
+
+// IsUserBlacklisted checks if all tokens for a user have been invalidated
+func IsUserBlacklisted(userID int64) (bool, error) {
+	db := database.AppDB
+
+	query := `
+		SELECT COUNT(*) FROM token_blacklist
+		WHERE user_id = $1 AND token LIKE 'USER_%_INVALIDATE_ALL' AND expires_at > NOW()
+	`
+
+	var count int
+	err := db.QueryRow(query, userID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // CleanupExpiredBlacklistedTokens removes expired tokens from blacklist

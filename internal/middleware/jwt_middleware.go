@@ -75,6 +75,18 @@ func JWTAuthMiddleware() echo.MiddlewareFunc {
 				})
 			}
 
+			// Check if all user tokens have been invalidated (password change, account disable)
+			userBlacklisted, _ := model.IsUserBlacklisted(claims.UserID)
+			if userBlacklisted {
+				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+					"success": false,
+					"message": "All sessions have been invalidated. Please login again.",
+					"error": map[string]string{
+						"code": "USER_SESSIONS_INVALIDATED",
+					},
+				})
+			}
+
 			// Set claims to context
 			c.Set("user_claims", claims)
 			c.Set("user_id", claims.UserID)
