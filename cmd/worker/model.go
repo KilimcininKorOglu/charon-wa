@@ -5,28 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 )
-
-// ConfigSQL returns correct placeholders for ConfigDB (always postgres)
-func ConfigSQL(query string) string {
-	return query
-}
-
-// OutboxSQL returns correct placeholders for OutboxDB (mysql or postgres)
-func OutboxSQL(query string) string {
-	if OutboxDriver != "postgres" {
-		// Convert $1, $2, etc to ?
-		newQuery := query
-		for i := 10; i >= 1; i-- { // Replace from highest to lowest
-			old := fmt.Sprintf("$%d", i)
-			newQuery = strings.ReplaceAll(newQuery, old, "?")
-		}
-		return newQuery
-	}
-	return query
-}
 
 type OutboxMessage struct {
 	ID              int64          `json:"id_outbox"`
@@ -104,94 +84,32 @@ func FetchWorkerConfigs(ctx context.Context) ([]WorkerConfig, error) {
 func ClaimPendingOutbox(ctx context.Context, filter string) (*OutboxMessage, error) {
 	// Atomic claim: Find one pending message (status 0), set it to processing (status 3), and return it.
 	// Using FOR UPDATE SKIP LOCKED to prevent multiple workers from claiming the same row.
-	var query string
-	if OutboxDriver == "postgres" {
-		query = `
-			UPDATE outbox 
-			SET status = 3
-			WHERE id_outbox = (
-				SELECT id_outbox 
-				FROM outbox 
-				WHERE status = 0 
-		`
-		if filter != "" {
-			query += fmt.Sprintf(" AND (%s) ", filter)
-		}
-		query += `
-				ORDER BY insertDateTime ASC 
-				LIMIT 1 
-				FOR UPDATE SKIP LOCKED
-			)
-			RETURNING id_outbox, destination, messages, status, application, table_id, file, insertDateTime
-		`
-	} else {
-		// MySQL 8.0+ support
-		// For MySQL, we might need a transaction block, but this is a simplified version
-		query = `
-			UPDATE outbox 
-			SET status = 3
-			WHERE status = 0 
-		`
-		if filter != "" {
-			query += fmt.Sprintf(" AND (%s) ", filter)
-		}
-		query += `
-			ORDER BY insertDateTime ASC 
+	query := `
+		UPDATE outbox
+		SET status = 3
+		WHERE id_outbox = (
+			SELECT id_outbox
+			FROM outbox
+			WHERE status = 0
+	`
+	if filter != "" {
+		query += fmt.Sprintf(" AND (%s) ", filter)
+	}
+	query += `
+			ORDER BY insertDateTime ASC
 			LIMIT 1
-		`
-		// Note: MySQL requires more careful handling for RETURN values,
-		// usually done via a transaction and SELECT ... FOR UPDATE.
-	}
-
-	if OutboxDriver == "postgres" {
-		row := OutboxDB.QueryRowContext(ctx, query)
-		var msg OutboxMessage
-		err := row.Scan(&msg.ID, &msg.Destination, &msg.Messages, &msg.Status, &msg.Application, &msg.TableID, &msg.File, &msg.InsertDateTime)
-		if err != nil {
-			return nil, err
-		}
-		return &msg, nil
-	} else {
-		// MySQL 8.0+ Atomic Claiming via Transaction
-		tx, err := OutboxDB.BeginTx(ctx, nil)
-		if err != nil {
-			return nil, err
-		}
-		defer tx.Rollback()
-
-		// 1. Select and Lock
-		selectQuery := `
-			SELECT id_outbox, destination, messages, status, application, table_id, file, insertDateTime 
-			FROM outbox 
-			WHERE status = 0 
-		`
-		if filter != "" {
-			selectQuery += fmt.Sprintf(" AND (%s) ", filter)
-		}
-		selectQuery += " ORDER BY insertDateTime ASC LIMIT 1 FOR UPDATE SKIP LOCKED "
-
-		var msg OutboxMessage
-		err = tx.QueryRowContext(ctx, selectQuery).Scan(
-			&msg.ID, &msg.Destination, &msg.Messages, &msg.Status, &msg.Application, &msg.TableID, &msg.File, &msg.InsertDateTime,
+			FOR UPDATE SKIP LOCKED
 		)
-		if err != nil {
-			return nil, err // Will include sql.ErrNoRows
-		}
+		RETURNING id_outbox, destination, messages, status, application, table_id, file, insertDateTime
+	`
 
-		// 2. Update status
-		_, err = tx.ExecContext(ctx, "UPDATE outbox SET status = 3 WHERE id_outbox = ?", msg.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		// 3. Commit
-		if err := tx.Commit(); err != nil {
-			return nil, err
-		}
-
-		msg.Status = 3
-		return &msg, nil
+	row := OutboxDB.QueryRowContext(ctx, query)
+	var msg OutboxMessage
+	err := row.Scan(&msg.ID, &msg.Destination, &msg.Messages, &msg.Status, &msg.Application, &msg.TableID, &msg.File, &msg.InsertDateTime)
+	if err != nil {
+		return nil, err
 	}
+	return &msg, nil
 }
 
 func FetchPendingOutbox(ctx context.Context, filter string) (*OutboxMessage, error) {
@@ -222,7 +140,7 @@ func UpdateOutboxSuccess(ctx context.Context, id int64, fromNumber string) error
 		SET status = 1, sendingDateTime = NOW(), from_number = $1, msg_error = NULL 
 		WHERE id_outbox = $2
 	`
-	res, err := OutboxDB.ExecContext(ctx, OutboxSQL(query), fromNumber, id)
+	res, err := OutboxDB.ExecContext(ctx, query, fromNumber, id)
 	if err != nil {
 		return err
 	}
@@ -239,7 +157,7 @@ func UpdateOutboxFailed(ctx context.Context, id int64, errorMsg string) error {
 		SET status = 2, msg_error = $1 
 		WHERE id_outbox = $2
 	`
-	res, err := OutboxDB.ExecContext(ctx, OutboxSQL(query), errorMsg, id)
+	res, err := OutboxDB.ExecContext(ctx, query, errorMsg, id)
 	if err != nil {
 		return err
 	}
@@ -256,7 +174,7 @@ func UpdateOutboxStatus(ctx context.Context, id int64, status int, errorMsg stri
 		SET status = $1, msg_error = $2 
 		WHERE id_outbox = $3
 	`
-	res, err := OutboxDB.ExecContext(ctx, OutboxSQL(query), status, errorMsg, id)
+	res, err := OutboxDB.ExecContext(ctx, query, status, errorMsg, id)
 	if err != nil {
 		return err
 	}
@@ -276,7 +194,7 @@ func LogWorkerEvent(workerID int, workerName, level, message string) {
 	if workerID > 0 {
 		wID = workerID
 	}
-	_, err := ConfigDB.Exec(ConfigSQL(query), wID, workerName, level, message)
+	_, err := ConfigDB.Exec(query, wID, workerName, level, message)
 	if err != nil {
 		log.Printf("CRITICAL: Failed to write system log to DB: %v", err)
 	}

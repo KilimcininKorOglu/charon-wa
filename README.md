@@ -110,7 +110,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 | Language   | Go 1.24+                                                    |
 | Framework  | [Echo v4](https://echo.labstack.com/)                       |
 | WhatsApp   | [whatsmeow](https://github.com/tulir/whatsmeow)            |
-| Database   | PostgreSQL 12+ (optional MySQL for outbox)                  |
+| Database   | PostgreSQL 12+                                              |
 | WebSocket  | [Gorilla WebSocket](https://github.com/gorilla/websocket)   |
 | AI         | Google Gemini API                                           |
 | Process    | PM2 (production)                                            |
@@ -123,7 +123,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 
 - Go 1.24 or later
 - PostgreSQL 12 or later
-- (Optional) MySQL for outbox database
+- (Optional) Separate PostgreSQL database for outbox
 - (Optional) PM2 for production process management
 
 ### Build
@@ -165,7 +165,7 @@ Configure these in your `.env` file.
 | :------------------- | :-------------------------------------------------- | :------ | :--------------------------------------- |
 | `DATABASE_URL`       | PostgreSQL URL for whatsmeow session storage        | --      | `postgres://user:pass@localhost:5432/db`  |
 | `APP_DATABASE_URL`   | PostgreSQL URL for application data                 | --      | `postgres://user:pass@localhost:5432/app` |
-| `OUTBOX_DATABASE_URL`| MySQL/PostgreSQL URL for outbox (optional)          | --      | `mysql://user:pass@localhost:3306/outbox` |
+| `OUTBOX_DATABASE_URL`| PostgreSQL URL for outbox (optional)                | --      | `postgres://user:pass@localhost:5432/outbox` |
 | `JWT_SECRET`         | Secret key for JWT authentication                   | --      | `your-secret-key`                        |
 | `APP_LOGIN_USERNAME` | Username for API login                              | --      | `admin`                                  |
 | `APP_LOGIN_PASSWORD` | Password for API login                              | --      | `secure-password`                        |

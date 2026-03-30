@@ -5,20 +5,15 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
-	_ "github.com/go-sql-driver/mysql" // MySQL driver
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq" // Postgres driver
+	_ "github.com/lib/pq"
 )
 
 var (
-	ConfigDB     *sql.DB
-	ConfigDriver string // "mysql" or "postgres"
-
-	OutboxDB     *sql.DB
-	OutboxDriver string // "mysql" or "postgres"
+	ConfigDB *sql.DB
+	OutboxDB *sql.DB
 )
 
 func initDB() {
@@ -27,43 +22,30 @@ func initDB() {
 	if appDBURL == "" {
 		log.Fatal("APP_DATABASE_URL is not set")
 	}
-	ConfigDB, ConfigDriver = connectDB(appDBURL, "Config (Postgres)")
+	ConfigDB = connectDB(appDBURL, "Config")
 
 	// 2. Initialise OutboxDB (OUTBOX_DATABASE_URL or fallback)
 	outboxDBURL := os.Getenv("OUTBOX_DATABASE_URL")
 	if outboxDBURL == "" {
 		log.Println("OUTBOX_DATABASE_URL not set, falling back to APP_DATABASE_URL for outbox")
-		OutboxDB, OutboxDriver = ConfigDB, ConfigDriver
+		OutboxDB = ConfigDB
 	} else {
-		OutboxDB, OutboxDriver = connectDB(outboxDBURL, "Outbox (External)")
+		OutboxDB = connectDB(outboxDBURL, "Outbox")
 	}
 }
 
-func connectDB(dbURL, label string) (*sql.DB, string) {
-	driver := "postgres"
-	if strings.HasPrefix(dbURL, "mysql://") {
-		driver = "mysql"
-		dbURL = strings.TrimPrefix(dbURL, "mysql://")
-		if strings.Contains(dbURL, "?") {
-			dbURL += "&parseTime=true"
-		} else {
-			dbURL += "?parseTime=true"
-		}
-	} else if strings.HasPrefix(dbURL, "postgres://") || strings.HasPrefix(dbURL, "postgresql://") {
-		driver = "postgres"
-	}
-
-	db, err := sql.Open(driver, dbURL)
+func connectDB(dbURL, label string) *sql.DB {
+	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
-		log.Fatalf("Failed to open %s database (%s): %v", label, driver, err)
+		log.Fatalf("Failed to open %s database: %v", label, err)
 	}
 
 	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping %s database (%s): %v", label, driver, err)
+		log.Fatalf("Failed to ping %s database: %v", label, err)
 	}
 
-	log.Printf("Successfully connected to %s (%s)", label, driver)
-	return db, driver
+	log.Printf("Successfully connected to %s database", label)
+	return db
 }
 
 func main() {

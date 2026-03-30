@@ -4,9 +4,6 @@ import (
 	"database/sql"
 	"log"
 
-	"strings"
-
-	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 )
 
@@ -35,26 +32,19 @@ func InitOutboxDB(outboxURL string) {
 		return
 	}
 
-	driver := "postgres"
-	if strings.HasPrefix(outboxURL, "mysql://") {
-		driver = "mysql"
-		// convert mysql://user:pass@tcp(host:port)/db to user:pass@tcp(host:port)/db
-		outboxURL = strings.TrimPrefix(outboxURL, "mysql://")
-	}
-
-	db, err := sql.Open(driver, outboxURL)
+	db, err := sql.Open("postgres", outboxURL)
 	if err != nil {
-		log.Printf("⚠️ Warning: Failed to open Outbox DB (%s): %v", driver, err)
+		log.Printf("⚠️ Warning: Failed to open Outbox DB: %v", err)
 		OutboxDB = AppDB
 		return
 	}
 
 	if err := db.Ping(); err != nil {
-		log.Printf("⚠️ Warning: Failed to ping Outbox DB (%s): %v. Falling back to AppDB.", driver, err)
+		log.Printf("⚠️ Warning: Failed to ping Outbox DB: %v. Falling back to AppDB.", err)
 		OutboxDB = AppDB
 		return
 	}
 
 	OutboxDB = db
-	log.Printf("Outbox DB (%s) connected successfully", driver)
+	log.Println("Outbox DB connected successfully")
 }
