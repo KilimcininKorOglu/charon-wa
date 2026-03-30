@@ -23,22 +23,22 @@ check-zig:
 
 build-linux: check-zig
 	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 CC="zig cc -target x86_64-linux" CXX="zig c++ -target x86_64-linux" go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/hermeswa_linux_amd64 .
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 CC="zig cc -target x86_64-linux" CXX="zig c++ -target x86_64-linux" go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/worker_linux_amd64 ./cmd/worker/
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/hermeswa_linux_amd64 .
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/worker_linux_amd64 ./cmd/worker/
 	CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC="zig cc -target aarch64-linux" CXX="zig c++ -target aarch64-linux" go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/hermeswa_linux_arm64 .
-	CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC="zig cc -target aarch64-linux" CXX="zig c++ -target aarch64-linux" go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/worker_linux_arm64 ./cmd/worker/
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/worker_linux_arm64 ./cmd/worker/
 
 build-windows: check-zig
 	@mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC="zig cc -target x86_64-windows" CXX="zig c++ -target x86_64-windows" go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/hermeswa_windows_amd64.exe .
-	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC="zig cc -target x86_64-windows" CXX="zig c++ -target x86_64-windows" go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/worker_windows_amd64.exe ./cmd/worker/
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/worker_windows_amd64.exe ./cmd/worker/
 
 build-darwin: check-zig
 	@mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 CC="zig cc -target x86_64-macos" CXX="zig c++ -target x86_64-macos" go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/hermeswa_darwin_amd64 .
-	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 CC="zig cc -target x86_64-macos" CXX="zig c++ -target x86_64-macos" go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/worker_darwin_amd64 ./cmd/worker/
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/worker_darwin_amd64 ./cmd/worker/
 	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 CC="zig cc -target aarch64-macos" CXX="zig c++ -target aarch64-macos" go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/hermeswa_darwin_arm64 .
-	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 CC="zig cc -target aarch64-macos" CXX="zig c++ -target aarch64-macos" go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/worker_darwin_arm64 ./cmd/worker/
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/worker_darwin_arm64 ./cmd/worker/
 
 build-all: build-linux build-windows build-darwin
 

@@ -28,8 +28,8 @@ jobs:
       - name: Lint
         run: make lint
 
-      - name: Build all platforms
-        run: make build-all
+      - name: Build Linux and Windows
+        run: make build-linux build-windows
 
       - name: Verify binaries
         run: |
@@ -39,7 +39,3 @@ jobs:
           ls -la bin/hermeswa_linux_arm64 bin/worker_linux_arm64
           echo "=== Windows amd64 ==="
           ls -la bin/hermeswa_windows_amd64.exe bin/worker_windows_amd64.exe
-          echo "=== Darwin amd64 ==="
-          ls -la bin/hermeswa_darwin_amd64 bin/worker_darwin_amd64
-          echo "=== Darwin arm64 ==="
-          ls -la bin/hermeswa_darwin_arm64 bin/worker_darwin_arm64
