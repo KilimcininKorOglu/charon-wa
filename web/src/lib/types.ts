@@ -66,9 +66,19 @@ export interface WarmingRoom {
   currentSequence: number
   intervalMinSeconds: number
   intervalMaxSeconds: number
+  sendRealMessage?: boolean
   nextRunAt?: string
   lastRunAt?: string
+  whitelistedNumber?: string
+  replyDelayMin?: number
+  replyDelayMax?: number
   aiEnabled?: boolean
+  aiProvider?: string
+  aiModel?: string
+  aiSystemPrompt?: string
+  aiTemperature?: number
+  aiMaxTokens?: number
+  fallbackToScript?: boolean
   createdAt: string
   updatedAt: string
 }

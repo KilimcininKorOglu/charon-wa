@@ -45,6 +45,9 @@ export function WarmingPage() {
   const [roomForm, setRoomForm] = useState<CreateWarmingRoomRequest>({ ...defaultRoom })
   const [creatingRoom, setCreatingRoom] = useState(false)
   const [instances, setInstances] = useState<Instance[]>([])
+  const [selectedRoom, setSelectedRoom] = useState<WarmingRoom | null>(null)
+  const [editRoom, setEditRoom] = useState<CreateWarmingRoomRequest>({ ...defaultRoom })
+  const [savingRoom, setSavingRoom] = useState(false)
 
   // Scripts
   const [scripts, setScripts] = useState<WarmingScript[]>([])
@@ -159,8 +162,38 @@ export function WarmingPage() {
   }
   const deleteRoom = async (id: string) => {
     if (!confirm("Delete room?")) return
-    try { await api.delete(`/api/warming/rooms/${id}`); toast.success("Deleted"); fetchRooms() }
+    try { await api.delete(`/api/warming/rooms/${id}`); toast.success("Deleted"); if (selectedRoom?.id === id) setSelectedRoom(null); fetchRooms() }
     catch { toast.error("Failed") }
+  }
+
+  const selectRoom = (room: WarmingRoom) => {
+    setSelectedRoom(room)
+    setEditRoom({
+      name: room.name, senderInstanceId: room.senderInstanceId,
+      receiverInstanceId: room.receiverInstanceId || "",
+      scriptId: room.scriptId, intervalMinSeconds: room.intervalMinSeconds,
+      intervalMaxSeconds: room.intervalMaxSeconds,
+      sendRealMessage: room.sendRealMessage || false,
+      roomType: room.roomType,
+      whitelistedNumber: room.whitelistedNumber || "",
+      replyDelayMin: room.replyDelayMin || 10,
+      replyDelayMax: room.replyDelayMax || 60,
+      aiEnabled: room.aiEnabled || false,
+      aiProvider: room.aiProvider || "gemini",
+      aiModel: room.aiModel || "gemini-flash-latest",
+      aiSystemPrompt: room.aiSystemPrompt || "",
+      aiTemperature: room.aiTemperature ?? 0.7,
+      aiMaxTokens: room.aiMaxTokens ?? 150,
+      fallbackToScript: room.fallbackToScript ?? true,
+    })
+  }
+  const saveRoom = async () => {
+    if (!selectedRoom) return
+    setSavingRoom(true)
+    try {
+      await api.put(`/api/warming/rooms/${selectedRoom.id}`, editRoom)
+      toast.success("Room updated"); fetchRooms()
+    } catch { toast.error("Failed to update") } finally { setSavingRoom(false) }
   }
 
   // ─── SCRIPT ACTIONS ────────────────────────────────────
@@ -264,7 +297,8 @@ export function WarmingPage() {
 
       {/* ═══ ROOMS TAB ═══ */}
       {tab === "rooms" && (
-        <div>
+        <div className="flex gap-4">
+        <div className="flex-1 min-w-0">
           <div className="flex justify-end gap-2 mb-4">
             <Button variant="ghost" size="sm" onClick={fetchRooms}><RefreshCw size={14} className="mr-1.5" /> Refresh</Button>
             <Button size="sm" onClick={() => { setShowWizard(true); setWizardStep(1); setRoomForm({ ...defaultRoom }) }}><Plus size={14} className="mr-1.5" /> New Room</Button>
@@ -397,7 +431,8 @@ export function WarmingPage() {
           {roomsLoading ? <Card className="animate-pulse"><div className="h-32 bg-bg-hover rounded" /></Card> :
             rooms.length === 0 ? <Card><p className="text-cyber-green-muted text-sm text-center py-8">No warming rooms yet.</p></Card> :
               <div className="space-y-2">{rooms.map(room => (
-                <Card key={room.id} className="flex items-center justify-between">
+                <div key={room.id} onClick={() => selectRoom(room)} className="cursor-pointer">
+                <Card className={`flex items-center justify-between transition-colors ${selectedRoom?.id === room.id ? "border-cyber-green/30 bg-cyber-green/5" : "hover:bg-bg-hover"}`}>
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-bold text-cyber-green">{room.name}</p>
@@ -408,7 +443,7 @@ export function WarmingPage() {
                       Sender: {room.senderInstanceId}{room.receiverInstanceId && ` → ${room.receiverInstanceId}`} | {room.intervalMinSeconds}-{room.intervalMaxSeconds}s | Seq: {room.currentSequence}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                     {room.status !== "ACTIVE" && <Button variant="outline" size="sm" onClick={() => updateRoomStatus(room.id, "ACTIVE")}><Play size={13} /></Button>}
                     {room.status === "ACTIVE" && <Button variant="outline" size="sm" onClick={() => updateRoomStatus(room.id, "PAUSE")}><Pause size={13} /></Button>}
                     <Button variant="ghost" size="sm" onClick={() => updateRoomStatus(room.id, "STOPPED")}><Square size={13} /></Button>
@@ -417,7 +452,72 @@ export function WarmingPage() {
                     <Button variant="danger" size="sm" onClick={() => deleteRoom(room.id)}><Trash2 size={13} /></Button>
                   </div>
                 </Card>
+                </div>
               ))}</div>}
+        </div>
+
+        {/* Room Edit Panel */}
+        {selectedRoom && (
+          <div className="w-80 shrink-0">
+            <Card>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-cyber-green-dim uppercase">Edit Room</h3>
+                <button onClick={() => setSelectedRoom(null)} className="text-cyber-green-muted hover:text-cyber-green cursor-pointer"><X size={14} /></button>
+              </div>
+              <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+                <Input label="Name" value={editRoom.name} onChange={(e) => setEditRoom({ ...editRoom, name: e.target.value })} />
+                <div>
+                  <label className="text-xs text-cyber-green-dim uppercase tracking-wider block mb-1.5">Script</label>
+                  <select value={editRoom.scriptId} onChange={(e) => setEditRoom({ ...editRoom, scriptId: parseInt(e.target.value) || 0 })} className={selCls}>
+                    <option value={0}>Select script</option>
+                    {scripts.map(s => <option key={s.id} value={s.id}>{s.title} ({s.category})</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input label="Min (s)" type="number" value={editRoom.intervalMinSeconds} onChange={(e) => setEditRoom({ ...editRoom, intervalMinSeconds: parseInt(e.target.value) || 0 })} />
+                  <Input label="Max (s)" type="number" value={editRoom.intervalMaxSeconds} onChange={(e) => setEditRoom({ ...editRoom, intervalMaxSeconds: parseInt(e.target.value) || 0 })} />
+                </div>
+                <label className="flex items-center gap-2 text-xs text-cyber-green cursor-pointer">
+                  <input type="checkbox" checked={editRoom.sendRealMessage} onChange={(e) => setEditRoom({ ...editRoom, sendRealMessage: e.target.checked })} className="accent-cyber-green" />
+                  Send Real Messages
+                </label>
+
+                {/* AI Config */}
+                <div className="border-t border-border pt-3 mt-3">
+                  <label className="flex items-center gap-2 text-xs text-cyber-green cursor-pointer">
+                    <input type="checkbox" checked={editRoom.aiEnabled || false} onChange={(e) => setEditRoom({ ...editRoom, aiEnabled: e.target.checked })} className="accent-cyber-green" />
+                    Enable AI Replies
+                  </label>
+                  {editRoom.aiEnabled && (
+                    <div className="space-y-3 mt-3 pl-3 border-l-2 border-cyber-green/20">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input label="Provider" value={editRoom.aiProvider || ""} onChange={(e) => setEditRoom({ ...editRoom, aiProvider: e.target.value })} />
+                        <Input label="Model" value={editRoom.aiModel || ""} onChange={(e) => setEditRoom({ ...editRoom, aiModel: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-cyber-green-dim uppercase tracking-wider block mb-1.5">System Prompt</label>
+                        <textarea value={editRoom.aiSystemPrompt || ""} onChange={(e) => setEditRoom({ ...editRoom, aiSystemPrompt: e.target.value })}
+                          className="w-full bg-bg-input border border-border text-cyber-green px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-cyber-green/50 h-16 resize-y" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input label="Temp" type="number" value={editRoom.aiTemperature ?? 0.7} onChange={(e) => setEditRoom({ ...editRoom, aiTemperature: parseFloat(e.target.value) || 0.7 })} />
+                        <Input label="Tokens" type="number" value={editRoom.aiMaxTokens ?? 150} onChange={(e) => setEditRoom({ ...editRoom, aiMaxTokens: parseInt(e.target.value) || 150 })} />
+                      </div>
+                      <label className="flex items-center gap-2 text-xs text-cyber-green cursor-pointer">
+                        <input type="checkbox" checked={editRoom.fallbackToScript ?? true} onChange={(e) => setEditRoom({ ...editRoom, fallbackToScript: e.target.checked })} className="accent-cyber-green" />
+                        Fallback to Script
+                      </label>
+                    </div>
+                  )}
+                </div>
+
+                <Button onClick={saveRoom} loading={savingRoom} disabled={!editRoom.name}>
+                  <Save size={12} className="mr-1" /> Save Changes
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
         </div>
       )}
 
