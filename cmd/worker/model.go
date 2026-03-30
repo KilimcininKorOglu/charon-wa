@@ -121,28 +121,6 @@ func ClaimPendingOutbox(ctx context.Context, applications []string) (*OutboxMess
 	return &msg, nil
 }
 
-func FetchPendingOutbox(ctx context.Context, filter string) (*OutboxMessage, error) {
-	query := `
-		SELECT id_outbox, destination, messages, status, application, table_id, file, insertDateTime 
-		FROM outbox 
-		WHERE status = 0 
-	`
-	if filter != "" {
-		query += fmt.Sprintf(" AND (%s) ", filter)
-	}
-	query += " ORDER BY insertDateTime ASC LIMIT 1 "
-
-	row := OutboxDB.QueryRowContext(ctx, query)
-
-	var msg OutboxMessage
-	err := row.Scan(&msg.ID, &msg.Destination, &msg.Messages, &msg.Status, &msg.Application, &msg.TableID, &msg.File, &msg.InsertDateTime)
-	if err != nil {
-		return nil, err
-	}
-
-	return &msg, nil
-}
-
 func UpdateOutboxSuccess(ctx context.Context, id int64, fromNumber string) error {
 	query := `
 		UPDATE outbox 
@@ -167,23 +145,6 @@ func UpdateOutboxFailed(ctx context.Context, id int64, errorMsg string) error {
 		WHERE id_outbox = $2
 	`
 	res, err := OutboxDB.ExecContext(ctx, query, errorMsg, id)
-	if err != nil {
-		return err
-	}
-	rows, _ := res.RowsAffected()
-	if rows == 0 {
-		return fmt.Errorf("no rows affected for id %d", id)
-	}
-	return nil
-}
-
-func UpdateOutboxStatus(ctx context.Context, id int64, status int, errorMsg string) error {
-	query := `
-		UPDATE outbox 
-		SET status = $1, msg_error = $2 
-		WHERE id_outbox = $3
-	`
-	res, err := OutboxDB.ExecContext(ctx, query, status, errorMsg, id)
 	if err != nil {
 		return err
 	}
