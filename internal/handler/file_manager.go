@@ -33,7 +33,7 @@ func ListFiles(c echo.Context) error {
 		return ErrorResponse(c, http.StatusBadRequest, "Invalid path", "INVALID_PATH", "")
 	}
 	absBase, _ := filepath.Abs(uploadsBaseDir)
-	if !strings.HasPrefix(absTarget, absBase) {
+	if absTarget != absBase && !strings.HasPrefix(absTarget, absBase+string(os.PathSeparator)) {
 		return ErrorResponse(c, http.StatusForbidden, "Access denied", "TRAVERSAL", "")
 	}
 
@@ -60,7 +60,7 @@ func DeleteFile(c echo.Context) error {
 		return ErrorResponse(c, http.StatusBadRequest, "Invalid path", "INVALID_PATH", "")
 	}
 	absBase, _ := filepath.Abs(uploadsBaseDir)
-	if !strings.HasPrefix(absTarget, absBase) || absTarget == absBase {
+	if absTarget == absBase || !strings.HasPrefix(absTarget, absBase+string(os.PathSeparator)) {
 		return ErrorResponse(c, http.StatusForbidden, "Access denied", "TRAVERSAL", "")
 	}
 
