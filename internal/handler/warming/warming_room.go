@@ -7,6 +7,7 @@ import (
 
 	"hermeswa/internal/handler"
 	warmingModel "hermeswa/internal/model/warming"
+	"hermeswa/internal/service"
 	warmingService "hermeswa/internal/service/warming"
 
 	"github.com/labstack/echo/v4"
@@ -147,6 +148,9 @@ func DeleteWarmingRoom(c echo.Context) error {
 		}
 		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to delete room", "DELETE_FAILED", err.Error())
 	}
+
+	// Cleanup auto-reply state for deleted room
+	service.CleanupReplyTime(id)
 
 	return handler.SuccessResponse(c, http.StatusOK, "Room deleted successfully", map[string]interface{}{
 		"id": id,

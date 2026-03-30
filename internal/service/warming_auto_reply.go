@@ -22,6 +22,11 @@ var (
 	lastReplyTime sync.Map // map[roomID]time.Time
 )
 
+// CleanupReplyTime removes the last reply time entry for a room (call on room finish/delete)
+func CleanupReplyTime(roomID string) {
+	lastReplyTime.Delete(roomID)
+}
+
 func HandleIncomingMessage(instanceID, sender, messageText string, chatJID types.JID, messageID, senderID string) error {
 	if !config.WarmingAutoReplyEnabled {
 		return nil
