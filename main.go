@@ -15,6 +15,7 @@ import (
 	warmingHandler "hermeswa/internal/handler/warming"
 	"hermeswa/internal/helper"
 	customMiddleware "hermeswa/internal/middleware"
+	"hermeswa/internal/model"
 	"hermeswa/internal/service"
 	"hermeswa/internal/worker"
 
@@ -132,6 +133,11 @@ func main() {
 	// 6. Auto-Migration (Ensure database schema is up to date)
 	log.Println("Ensuring database schema...")
 	helper.InitCustomSchema()
+
+	// 7. Seed default admin user if none exists
+	if err := model.SeedAdminUser(); err != nil {
+		log.Printf("Warning: Failed to seed admin user: %v", err)
+	}
 
 	// Load all existing devices from database
 	log.Println("Loading existing devices...")

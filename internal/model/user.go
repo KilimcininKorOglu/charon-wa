@@ -4,9 +4,12 @@ package model
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"time"
 
 	"hermeswa/database"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // User represents a user account in the system
@@ -359,6 +362,62 @@ func ListUsers() ([]User, error) {
 	}
 
 	return users, nil
+}
+
+// SeedAdminUser checks if any admin user exists in the database.
+// If not, creates a default admin account (admin / admin123).
+// This runs on every startup to ensure at least one admin exists.
+func SeedAdminUser() error {
+	db := database.AppDB
+
+	var count int
+	err := db.QueryRow(`SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = true`).Scan(&count)
+	if err != nil {
+		return err
+	}
+
+	if count > 0 {
+		log.Printf("Admin user check: %d active admin(s) found, skipping seed", count)
+		return nil
+	}
+
+	log.Println("No admin user found, creating default admin account (admin / admin123)...")
+	hashedPassword, err := hashDefaultAdminPassword()
+	if err != nil {
+		return err
+	}
+
+	admin := &User{
+		Username:      "admin",
+		Email:         "admin@hermeswa.local",
+		PasswordHash:  sql.NullString{String: hashedPassword, Valid: true},
+		FullName:      sql.NullString{String: "System Administrator", Valid: true},
+		AuthProvider:  "local",
+		Role:          "admin",
+		IsActive:      true,
+		EmailVerified: true,
+	}
+
+	err = CreateUser(admin)
+	if err != nil {
+		// User might already exist but not as admin — try to promote
+		existing, getErr := GetUserByUsername("admin")
+		if getErr == nil {
+			_, updateErr := db.Exec(`UPDATE users SET role = 'admin', is_active = true WHERE id = $1`, existing.ID)
+			return updateErr
+		}
+		return err
+	}
+
+	return nil
+}
+
+func hashDefaultAdminPassword() (string, error) {
+	hashed, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hashed), nil
 }
 
 // ToResponse converts User to UserResponse (removes sensitive data)

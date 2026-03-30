@@ -167,8 +167,6 @@ Configure these in your `.env` file.
 | `APP_DATABASE_URL`   | PostgreSQL URL for application data                 | --      | `postgres://user:pass@localhost:5432/app` |
 | `OUTBOX_DATABASE_URL`| PostgreSQL URL for outbox (optional)                | --      | `postgres://user:pass@localhost:5432/outbox` |
 | `JWT_SECRET`         | Secret key for JWT authentication                   | --      | `your-secret-key`                        |
-| `APP_LOGIN_USERNAME` | Username for API login                              | --      | `admin`                                  |
-| `APP_LOGIN_PASSWORD` | Password for API login                              | --      | `secure-password`                        |
 | `PORT`               | Server listening port                               | `2121`  | `3000`                                   |
 | `BASEURL`            | Base URL/Host of the server                         | --      | `127.0.0.1`                              |
 | `CORS_ALLOW_ORIGINS` | Allowed origins for CORS                            | --      | `http://localhost:3000`                  |
