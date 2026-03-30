@@ -36,6 +36,7 @@ export function InstancesPage() {
   const [webhookUrl, setWebhookUrl] = useState("")
   const [webhookSecret, setWebhookSecret] = useState("")
   const [savingWebhook, setSavingWebhook] = useState(false)
+  const [refreshingStatus, setRefreshingStatus] = useState(false)
 
   const fetchInstances = useCallback(async () => {
     try {
@@ -148,6 +149,20 @@ export function InstancesPage() {
         toast.success("Webhook configured")
       } else { toast.error(res.data.message) }
     } catch { toast.error("Failed to set webhook") } finally { setSavingWebhook(false) }
+  }
+
+  const refreshStatus = async () => {
+    if (!selected) return
+    setRefreshingStatus(true)
+    try {
+      const res = await api.get<ApiResponse<{ instanceId: string; isConnected: boolean; jid: string }>>(`/api/status/${selected.instanceId}`)
+      if (res.data.success && res.data.data) {
+        const { isConnected } = res.data.data
+        setSelected({ ...selected, connected: isConnected })
+        setInstances((prev) => prev.map((i) => i.instanceId === selected.instanceId ? { ...i, connected: isConnected } : i))
+        toast.success(isConnected ? "Connected" : "Disconnected")
+      }
+    } catch { toast.error("Failed to check status") } finally { setRefreshingStatus(false) }
   }
 
   const statusBadge = (inst: Instance) => {
@@ -263,6 +278,10 @@ export function InstancesPage() {
               <div className="flex items-center gap-2">
                 <span className="text-cyber-green-muted">Status: </span>
                 {statusBadge(selected)}
+                <button onClick={refreshStatus} disabled={refreshingStatus}
+                  className="text-cyber-green-muted hover:text-cyber-green cursor-pointer ml-auto disabled:opacity-50" title="Refresh status">
+                  <RefreshCw size={11} className={refreshingStatus ? "animate-spin" : ""} />
+                </button>
               </div>
               {selected.phoneNumber && (
                 <div>
