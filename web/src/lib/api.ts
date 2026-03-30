@@ -1,5 +1,6 @@
 import axios from "axios"
 import type { ApiResponse } from "./types"
+import { getRefreshToken, setRefreshToken } from "../stores/authStore"
 
 const api = axios.create({
   baseURL: "/",
@@ -22,7 +23,7 @@ api.interceptors.response.use(
     const original = error.config
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true
-      const refreshToken = localStorage.getItem("refresh_token")
+      const refreshToken = getRefreshToken()
       if (refreshToken) {
         try {
           const res = await axios.post<ApiResponse<{ access_token: string; refresh_token: string }>>(
@@ -32,14 +33,14 @@ api.interceptors.response.use(
           if (res.data.success && res.data.data) {
             localStorage.setItem("access_token", res.data.data.access_token)
             if (res.data.data.refresh_token) {
-              localStorage.setItem("refresh_token", res.data.data.refresh_token)
+              setRefreshToken(res.data.data.refresh_token)
             }
             original.headers.Authorization = `Bearer ${res.data.data.access_token}`
             return api(original)
           }
         } catch {
           localStorage.removeItem("access_token")
-          localStorage.removeItem("refresh_token")
+          setRefreshToken(null)
           window.location.href = "/login"
         }
       } else {
