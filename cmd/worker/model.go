@@ -163,7 +163,7 @@ func UpdateOutboxSuccess(ctx context.Context, id int64, fromNumber string) error
 func UpdateOutboxFailed(ctx context.Context, id int64, errorMsg string) error {
 	query := `
 		UPDATE outbox 
-		SET status = 2, msg_error = $1 
+		SET status = 2, msg_error = $1, error_count = error_count + 1
 		WHERE id_outbox = $2
 	`
 	res, err := OutboxDB.ExecContext(ctx, query, errorMsg, id)
