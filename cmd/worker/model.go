@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -81,29 +82,37 @@ func FetchWorkerConfigs(ctx context.Context) ([]WorkerConfig, error) {
 	return configs, rows.Err()
 }
 
-func ClaimPendingOutbox(ctx context.Context, filter string) (*OutboxMessage, error) {
+func ClaimPendingOutbox(ctx context.Context, applications []string) (*OutboxMessage, error) {
 	// Atomic claim: Find one pending message (status 0), set it to processing (status 3), and return it.
 	// Using FOR UPDATE SKIP LOCKED to prevent multiple workers from claiming the same row.
-	query := `
+	// Applications filter uses parameterized queries to prevent SQL injection.
+	var args []interface{}
+	appFilter := ""
+
+	if len(applications) > 0 {
+		placeholders := make([]string, len(applications))
+		for i, app := range applications {
+			placeholders[i] = fmt.Sprintf("$%d", i+1)
+			args = append(args, app)
+		}
+		appFilter = fmt.Sprintf(" AND application IN (%s)", strings.Join(placeholders, ","))
+	}
+
+	query := fmt.Sprintf(`
 		UPDATE outbox
 		SET status = 3
 		WHERE id_outbox = (
 			SELECT id_outbox
 			FROM outbox
-			WHERE status = 0
-	`
-	if filter != "" {
-		query += fmt.Sprintf(" AND (%s) ", filter)
-	}
-	query += `
+			WHERE status = 0%s
 			ORDER BY insertDateTime ASC
 			LIMIT 1
 			FOR UPDATE SKIP LOCKED
 		)
 		RETURNING id_outbox, destination, messages, status, application, table_id, file, insertDateTime
-	`
+	`, appFilter)
 
-	row := OutboxDB.QueryRowContext(ctx, query)
+	row := OutboxDB.QueryRowContext(ctx, query, args...)
 	var msg OutboxMessage
 	err := row.Scan(&msg.ID, &msg.Destination, &msg.Messages, &msg.Status, &msg.Application, &msg.TableID, &msg.File, &msg.InsertDateTime)
 	if err != nil {

@@ -73,28 +73,18 @@ func (w *WorkerInstance) Stop() {
 
 func (w *WorkerInstance) runCycle() {
 	// 1. Build Application Filter
-	// Supports:
-	// - "App1" (Single)
-	// - "App1, App2, App3" (Multi - Sequential/Antri)
-	// - "*" (Wildcard - All Applications)
-	var filter string
-	if w.config.Application == "*" || w.config.Application == "" {
-		filter = "" // No application filter, process everything
-	} else if strings.Contains(w.config.Application, ",") {
-		// Multi-application support
-		apps := strings.Split(w.config.Application, ",")
-		var quotedApps []string
-		for _, a := range apps {
-			quotedApps = append(quotedApps, fmt.Sprintf("'%s'", strings.TrimSpace(a)))
+	// Supports: "App1" (Single), "App1, App2, App3" (Multi), "*" or "" (Wildcard)
+	var applications []string
+	if w.config.Application != "*" && w.config.Application != "" {
+		for _, a := range strings.Split(w.config.Application, ",") {
+			if trimmed := strings.TrimSpace(a); trimmed != "" {
+				applications = append(applications, trimmed)
+			}
 		}
-		filter = fmt.Sprintf("application IN (%s)", strings.Join(quotedApps, ","))
-	} else {
-		// Single application (existing behavior)
-		filter = fmt.Sprintf("application = '%s'", w.config.Application)
 	}
 
 	// 2. Claim a pending message (atomicly sets status to 3)
-	msg, err := ClaimPendingOutbox(w.ctx, filter)
+	msg, err := ClaimPendingOutbox(w.ctx, applications)
 
 	if err != nil {
 		if err != sql.ErrNoRows {
