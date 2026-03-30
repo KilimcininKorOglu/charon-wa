@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: hermeswa
       POSTGRES_PASSWORD: hermeswa
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./docker-data/postgres:/var/lib/postgresql/data
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     ports:
       - "5432:5432"
@@ -25,9 +25,9 @@ services:
       - .env.docker
     volumes:
       - .:/app
-      - go_mod_cache:/go/pkg/mod
-      - go_build_cache:/root/.cache/go-build
-      - uploads_data:/app/uploads
+      - ./docker-data/go-mod:/go/pkg/mod
+      - ./docker-data/go-build:/root/.cache/go-build
+      - ./docker-data/uploads:/app/uploads
     ports:
       - "2121:2121"
     depends_on:
@@ -51,15 +51,9 @@ services:
       OUTBOX_API_BASEURL: http://api:2121
     volumes:
       - .:/app
-      - go_mod_cache:/go/pkg/mod
-      - go_build_cache:/root/.cache/go-build
+      - ./docker-data/go-mod:/go/pkg/mod
+      - ./docker-data/go-build:/root/.cache/go-build
     depends_on:
       api:
         condition: service_healthy
     command: ["go", "run", "./cmd/worker/"]
-
-volumes:
-  postgres_data:
-  go_mod_cache:
-  go_build_cache:
-  uploads_data:
