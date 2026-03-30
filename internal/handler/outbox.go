@@ -130,7 +130,7 @@ func GetOutboxStatus(c echo.Context) error {
 
 	// Non-admin users can only see their own messages
 	clientID := int(claims.UserID)
-	if claims.Role == "admin" || claims.Role == "superadmin" {
+	if claims.Role == "admin" {
 		clientID = 0 // admin sees all
 	}
 
@@ -166,7 +166,7 @@ func ListOutboxMessages(c echo.Context) error {
 	}
 
 	// Non-admin users can only see their own messages
-	if claims.Role != "admin" && claims.Role != "superadmin" {
+	if claims.Role != "admin" {
 		filter.ClientID = int(claims.UserID)
 	}
 
