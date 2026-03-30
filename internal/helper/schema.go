@@ -688,6 +688,28 @@ func InitCustomSchema() {
 		END $$;
 	`
 	_, _ = db.Exec(addOutboxColumnLogic)
+
+	// ─── API KEYS TABLE ─────────────────────────────────
+	apiKeysSchema := `
+		CREATE TABLE IF NOT EXISTS api_keys (
+			id SERIAL PRIMARY KEY,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			key_hash VARCHAR(64) NOT NULL UNIQUE,
+			key_prefix VARCHAR(8) NOT NULL,
+			name VARCHAR(100) NOT NULL,
+			application VARCHAR(100),
+			enabled BOOLEAN DEFAULT true NOT NULL,
+			last_used_at TIMESTAMP WITH TIME ZONE,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		);
+		CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+		CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
+	`
+	if _, err := db.Exec(apiKeysSchema); err != nil {
+		log.Printf("⚠️ Warning: Could not create api_keys table: %v", err)
+	} else {
+		log.Println("✅ API keys table ensured")
+	}
 }
 
 // seedInitialTemplates populates warming_templates with initial conversation templates

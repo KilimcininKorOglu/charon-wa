@@ -366,6 +366,27 @@ func main() {
 	blastOutbox.GET("/available-applications", handler.GetAvailableApplications)
 
 	//----------------------------
+	// API KEY MANAGEMENT (JWT protected)
+	//----------------------------
+	apiKeys := api.Group("/api-keys")
+	apiKeys.POST("", handler.CreateAPIKey)
+	apiKeys.GET("", handler.ListAPIKeys)
+	apiKeys.DELETE("/:id", handler.DeleteAPIKey)
+
+	//----------------------------
+	// OUTBOX API (API Key protected)
+	//----------------------------
+	outbox := e.Group("/api/outbox", customMiddleware.APIKeyAuthMiddleware())
+	outbox.POST("/enqueue", handler.EnqueueOutbox)
+	outbox.POST("/enqueue-batch", handler.EnqueueOutboxBatch)
+	outbox.GET("/status/:id", handler.GetOutboxStatus)
+	outbox.GET("/messages", handler.ListOutboxMessages)
+
+	// Outbox messages also accessible via JWT (for admin UI)
+	api.GET("/outbox/messages", handler.ListOutboxMessages)
+	api.GET("/outbox/status/:id", handler.GetOutboxStatus)
+
+	//----------------------------
 	// WARMING SYSTEM
 	//----------------------------
 	warming := api.Group("/warming")
