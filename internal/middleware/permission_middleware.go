@@ -115,6 +115,9 @@ func RequirePhoneNumberAccess() echo.MiddlewareFunc {
 				})
 			}
 
+			// Store resolved instance ID for handlers to reuse (avoid duplicate DB queries)
+			c.Set("resolved_instance_id", inst.InstanceID)
+
 			return next(c)
 		}
 	}
