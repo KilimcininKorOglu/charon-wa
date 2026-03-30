@@ -70,6 +70,9 @@ export function WarmingPage() {
   const [templatesLoading, setTemplatesLoading] = useState(false)
   const [showCreateTemplate, setShowCreateTemplate] = useState(false)
   const [newTemplate, setNewTemplate] = useState({ name: "", category: "casual", structure: "{}" })
+  const [selectedTemplate, setSelectedTemplate] = useState<WarmingTemplate | null>(null)
+  const [editTemplate, setEditTemplate] = useState({ name: "", category: "", structure: "{}" })
+  const [savingTemplate, setSavingTemplate] = useState(false)
 
   // Logs
   const [logs, setLogs] = useState<WarmingLog[]>([])
@@ -275,8 +278,22 @@ export function WarmingPage() {
   }
   const deleteTemplate = async (id: number) => {
     if (!confirm("Delete template?")) return
-    try { await api.delete(`/api/warming/templates/${id}`); toast.success("Deleted"); fetchTemplates() }
+    try { await api.delete(`/api/warming/templates/${id}`); toast.success("Deleted"); if (selectedTemplate?.id === id) setSelectedTemplate(null); fetchTemplates() }
     catch { toast.error("Failed") }
+  }
+  const selectTemplate = (t: WarmingTemplate) => {
+    setSelectedTemplate(t)
+    setEditTemplate({ name: t.name, category: t.category, structure: JSON.stringify(t.structure, null, 2) })
+  }
+  const saveTemplate = async () => {
+    if (!selectedTemplate) return
+    let structure: unknown
+    try { structure = JSON.parse(editTemplate.structure) } catch { toast.error("Invalid JSON"); return }
+    setSavingTemplate(true)
+    try {
+      await api.put(`/api/warming/templates/${selectedTemplate.id}`, { ...editTemplate, structure })
+      toast.success("Template updated"); fetchTemplates()
+    } catch { toast.error("Failed to update") } finally { setSavingTemplate(false) }
   }
 
   const tabClass = (t: Tab) => `px-4 py-2 text-sm font-mono cursor-pointer border-b-2 transition-colors ${tab === t ? "border-cyber-green text-cyber-green" : "border-transparent text-cyber-green-muted hover:text-cyber-green"}`
@@ -642,7 +659,8 @@ export function WarmingPage() {
 
       {/* ═══ TEMPLATES TAB ═══ */}
       {tab === "templates" && (
-        <div>
+        <div className="flex gap-4">
+        <div className="flex-1 min-w-0">
           <div className="flex justify-end gap-2 mb-4">
             <Button variant="ghost" size="sm" onClick={fetchTemplates}><RefreshCw size={14} className="mr-1.5" /> Refresh</Button>
             <Button size="sm" onClick={() => setShowCreateTemplate(true)}><Plus size={14} className="mr-1.5" /> New Template</Button>
@@ -670,14 +688,44 @@ export function WarmingPage() {
           {templatesLoading ? <Card className="animate-pulse"><div className="h-32 bg-bg-hover rounded" /></Card> :
             templates.length === 0 ? <Card><p className="text-cyber-green-muted text-sm text-center py-8">No templates yet.</p></Card> :
               <div className="space-y-2">{templates.map(t => (
-                <Card key={t.id} className="flex items-center justify-between">
+                <div key={t.id} onClick={() => selectTemplate(t)} className="cursor-pointer">
+                <Card className={`flex items-center justify-between transition-colors ${selectedTemplate?.id === t.id ? "border-cyber-green/30 bg-cyber-green/5" : "hover:bg-bg-hover"}`}>
                   <div>
                     <p className="text-sm font-bold text-cyber-green">{t.name}</p>
                     <p className="text-xs text-cyber-green-muted mt-0.5"><Badge variant="muted">{t.category}</Badge></p>
                   </div>
-                  <Button variant="danger" size="sm" onClick={() => deleteTemplate(t.id)}><Trash2 size={13} /></Button>
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <Button variant="outline" size="sm" onClick={() => selectTemplate(t)}><Edit3 size={13} /></Button>
+                    <Button variant="danger" size="sm" onClick={() => deleteTemplate(t.id)}><Trash2 size={13} /></Button>
+                  </div>
                 </Card>
+                </div>
               ))}</div>}
+        </div>
+
+        {/* Template Edit Panel */}
+        {selectedTemplate && (
+          <div className="w-80 shrink-0">
+            <Card>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-cyber-green-dim uppercase">Edit Template</h3>
+                <button onClick={() => setSelectedTemplate(null)} className="text-cyber-green-muted hover:text-cyber-green cursor-pointer"><X size={14} /></button>
+              </div>
+              <div className="space-y-3">
+                <Input label="Name" value={editTemplate.name} onChange={(e) => setEditTemplate({ ...editTemplate, name: e.target.value })} />
+                <Input label="Category" value={editTemplate.category} onChange={(e) => setEditTemplate({ ...editTemplate, category: e.target.value })} />
+                <div>
+                  <label className="text-xs text-cyber-green-dim uppercase tracking-wider block mb-1.5">Structure (JSON)</label>
+                  <textarea value={editTemplate.structure} onChange={(e) => setEditTemplate({ ...editTemplate, structure: e.target.value })}
+                    className="w-full bg-bg-input border border-border text-cyber-green px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-cyber-green/50 h-32 resize-y" />
+                </div>
+                <Button onClick={saveTemplate} loading={savingTemplate} disabled={!editTemplate.name}>
+                  <Save size={12} className="mr-1" /> Save Changes
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
         </div>
       )}
 
