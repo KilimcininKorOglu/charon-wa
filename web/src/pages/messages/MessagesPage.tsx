@@ -32,9 +32,9 @@ export function MessagesPage() {
   useEffect(() => {
     const fetch = async () => {
       try {
-        const res = await api.get<ApiResponse<Instance[]>>("/api/instances?all=true")
+        const res = await api.get<ApiResponse<{ instances: Instance[]; total: number }>>("/api/instances?all=true")
         if (res.data.success && res.data.data) {
-          setInstances(res.data.data.filter((i) => i.connected))
+          setInstances((res.data.data.instances || []).filter((i) => i.connected))
         }
       } catch {
         // ignore

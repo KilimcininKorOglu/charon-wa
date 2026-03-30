@@ -29,7 +29,7 @@ export function BlastPage() {
     circle: "",
     application: "",
     message_type: "direct",
-    interval_min_seconds: 10,
+    interval_seconds: 10,
     interval_max_seconds: 30,
     enabled: true,
     allow_media: false,
@@ -73,7 +73,7 @@ export function BlastPage() {
       if (res.data.success) {
         toast.success("Worker config created")
         setShowCreate(false)
-        setForm({ worker_name: "", circle: "", application: "", message_type: "direct", interval_min_seconds: 10, interval_max_seconds: 30, enabled: true, allow_media: false, webhook_url: "" })
+        setForm({ worker_name: "", circle: "", application: "", message_type: "direct", interval_seconds: 10, interval_max_seconds: 30, enabled: true, allow_media: false, webhook_url: "" })
         fetchConfigs()
       } else {
         toast.error(res.data.message)
@@ -161,8 +161,8 @@ export function BlastPage() {
             <Input
               label="Interval Min (sec)"
               type="number"
-              value={form.interval_min_seconds}
-              onChange={(e) => setForm({ ...form, interval_min_seconds: parseInt(e.target.value) || 0 })}
+              value={form.interval_seconds}
+              onChange={(e) => setForm({ ...form, interval_seconds: parseInt(e.target.value) || 0 })}
             />
             <Input
               label="Interval Max (sec)"

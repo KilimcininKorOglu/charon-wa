@@ -174,7 +174,7 @@ export function InstancesPage() {
               Scan QR — {qrData.instanceId}
             </h3>
             <button
-              onClick={() => { setQrData(null); setScanningId(null) }}
+              onClick={() => { api.delete(`/api/qr-cancel/${qrData.instanceId}`).catch(() => {}); setQrData(null); setScanningId(null) }}
               className="text-cyber-green-muted hover:text-cyber-green cursor-pointer"
             >
               <X size={16} />
