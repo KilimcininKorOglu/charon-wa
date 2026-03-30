@@ -66,6 +66,8 @@ goto %~1
     echo   fmt          - Format code
     echo   vet          - Run go vet
     echo   lint         - Run fmt and vet
+    echo.
+    echo Cross-platform builds are handled by GoReleaser (goreleaser-cross).
     goto end
 
 :end

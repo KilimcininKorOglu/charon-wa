@@ -25,10 +25,13 @@ jobs:
         with:
           go-version: '1.24'
 
+      - name: Lint
+        run: make lint
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
-          distribution: goreleaser
+          distribution: goreleaser-cross
           version: latest
           args: release --clean
         env:
