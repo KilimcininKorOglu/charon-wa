@@ -9,6 +9,7 @@ import { RegisterPage } from "./pages/auth/RegisterPage"
 import { DashboardPage } from "./pages/dashboard/DashboardPage"
 import { InstancesPage } from "./pages/instances/InstancesPage"
 import { MessagesPage } from "./pages/messages/MessagesPage"
+import { ContactsPage } from "./pages/contacts/ContactsPage"
 import { FilesPage } from "./pages/files/FilesPage"
 import { WarmingPage } from "./pages/warming/WarmingPage"
 import { BlastPage } from "./pages/blast/BlastPage"
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/instances" element={<InstancesPage />} />
           <Route path="/messages" element={<MessagesPage />} />
+          <Route path="/contacts" element={<ContactsPage />} />
           <Route path="/files" element={<FilesPage />} />
           <Route path="/warming/rooms" element={<WarmingPage />} />
           <Route path="/blast" element={<BlastPage />} />
