@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 
 	"hermeswa/internal/model"
@@ -36,7 +37,7 @@ func APIKeyAuthMiddleware() echo.MiddlewareFunc {
 			}
 
 			// Update last used timestamp (async, don't block)
-			go model.UpdateAPIKeyLastUsed(c.Request().Context(), key.ID)
+			go model.UpdateAPIKeyLastUsed(context.Background(), key.ID)
 
 			// Set same context keys as JWT middleware for handler compatibility
 			claims := &service.Claims{
