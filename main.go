@@ -182,6 +182,7 @@ func main() {
 			echo.HeaderAccept,
 			echo.HeaderXRequestedWith,
 			echo.HeaderAuthorization,
+			"X-API-Key",
 		},
 		AllowCredentials: true,
 	}))
