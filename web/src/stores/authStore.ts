@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import type { User, AuthResponse, ApiResponse } from "../lib/types"
 import api from "../lib/api"
+import { globalWs } from "../lib/ws"
 
 interface AuthState {
   user: User | null
@@ -57,6 +58,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
     localStorage.removeItem("access_token")
     localStorage.removeItem("refresh_token")
+    globalWs.disconnect()
     set({ user: null, isAuthenticated: false })
   },
 

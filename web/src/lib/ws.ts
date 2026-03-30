@@ -18,6 +18,10 @@ class WebSocketClient {
 
     this.ws = new WebSocket(this.url)
 
+    this.ws.onopen = () => {
+      this.reconnectAttempts = 0
+    }
+
     this.ws.onmessage = (event) => {
       try {
         const wsEvent: WsEvent = JSON.parse(event.data)
@@ -64,12 +68,19 @@ class WebSocketClient {
     )
   }
 
+  private reconnectAttempts = 0
+
   private scheduleReconnect() {
     if (this.reconnectTimer) return
+    // Don't reconnect if user is not authenticated
+    if (!localStorage.getItem("access_token")) return
+    // Exponential backoff: 3s, 6s, 12s, 24s, max 30s
+    const delay = Math.min(3000 * Math.pow(2, this.reconnectAttempts), 30000)
+    this.reconnectAttempts++
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
       this.connect()
-    }, 3000)
+    }, delay)
   }
 }
 
