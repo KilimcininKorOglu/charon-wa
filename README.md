@@ -459,13 +459,13 @@ X-API-Key: hwa_your_api_key_here
 
 ## WebSocket Events
 
-### Global WebSocket -- System Events (No Auth)
+### Global WebSocket -- System Events (JWT Required)
 
 ```
-ws://{host}:{port}/ws
+ws://{host}:{port}/ws?token={jwt_token}
 ```
 
-Public endpoint. Monitors QR code generation, login/logout events, connection status changes, and system-wide notifications for all instances.
+Requires JWT token as query parameter. Monitors QR code generation, login/logout events, connection status changes, and system-wide notifications for all instances. Origin is validated against `CORS_ALLOW_ORIGINS`.
 
 ### Instance-Specific WebSocket -- Incoming Messages (JWT Required)
 
