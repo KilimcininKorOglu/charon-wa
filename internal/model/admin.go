@@ -158,6 +158,11 @@ func AdminUpdateUser(userID int64, req AdminUpdateUserRequest) (*User, error) {
 		return nil, err
 	}
 
+	// Revoke all sessions when account is disabled
+	if req.IsActive != nil && !*req.IsActive {
+		_ = RevokeAllUserTokens(userID)
+	}
+
 	return GetUserByID(userID)
 }
 
