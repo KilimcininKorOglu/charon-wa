@@ -14,6 +14,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,6 +24,7 @@ type WorkerInstance struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	counter int // Round-robin counter
+	wg      sync.WaitGroup
 }
 
 func NewWorkerInstance(config WorkerConfig, client *HermeswaClient) *WorkerInstance {
@@ -36,6 +38,9 @@ func NewWorkerInstance(config WorkerConfig, client *HermeswaClient) *WorkerInsta
 }
 
 func (w *WorkerInstance) Start() {
+	w.wg.Add(1)
+	defer w.wg.Done()
+
 	log.Printf("[%s] Worker started", w.config.WorkerName)
 	LogWorkerEvent(w.config.ID, w.config.WorkerName, "INFO", "Worker started")
 
@@ -69,6 +74,7 @@ func (w *WorkerInstance) Start() {
 func (w *WorkerInstance) Stop() {
 	LogWorkerEvent(w.config.ID, w.config.WorkerName, "INFO", "Worker stopping")
 	w.cancel()
+	w.wg.Wait()
 }
 
 func (w *WorkerInstance) runCycle() {
