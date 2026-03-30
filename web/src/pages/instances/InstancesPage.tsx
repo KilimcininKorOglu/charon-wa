@@ -81,7 +81,7 @@ export function InstancesPage() {
     setDeviceInfo(null)
     setWebhookUrl("")
     setWebhookSecret("")
-    if (inst.connected) {
+    if (inst.isConnected) {
       try {
         const res = await api.get<ApiResponse<DeviceInfo>>(`/api/info-device/${inst.instanceId}`)
         if (res.data.success && res.data.data) setDeviceInfo(res.data.data)
@@ -158,15 +158,15 @@ export function InstancesPage() {
       const res = await api.get<ApiResponse<{ instanceId: string; isConnected: boolean; jid: string }>>(`/api/status/${selected.instanceId}`)
       if (res.data.success && res.data.data) {
         const { isConnected } = res.data.data
-        setSelected({ ...selected, connected: isConnected })
-        setInstances((prev) => prev.map((i) => i.instanceId === selected.instanceId ? { ...i, connected: isConnected } : i))
+        setSelected({ ...selected, isConnected })
+        setInstances((prev) => prev.map((i) => i.instanceId === selected.instanceId ? { ...i, isConnected } : i))
         toast.success(isConnected ? "Connected" : "Disconnected")
       }
     } catch { toast.error("Failed to check status") } finally { setRefreshingStatus(false) }
   }
 
   const statusBadge = (inst: Instance) => {
-    if (inst.connected) return <Badge variant="success">Connected</Badge>
+    if (inst.isConnected) return <Badge variant="success">Connected</Badge>
     if (inst.status === "logged_out") return <Badge variant="danger">Logged Out</Badge>
     return <Badge variant="warning">Disconnected</Badge>
   }
@@ -229,7 +229,7 @@ export function InstancesPage() {
                 className={`flex items-center justify-between cursor-pointer transition-colors ${selected?.instanceId === inst.instanceId ? "border-cyber-green/30 bg-cyber-green/5" : "hover:bg-bg-hover"}`}
               >
                 <div className="flex items-center gap-4 flex-1 min-w-0" onClick={() => handleSelectInstance(inst)}>
-                  <div className={`w-2 h-2 rounded-full shrink-0 ${inst.connected ? "bg-cyber-green shadow-[0_0_8px_rgba(0,255,65,0.5)]" : "bg-cyber-green-muted"}`} />
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${inst.isConnected ? "bg-cyber-green shadow-[0_0_8px_rgba(0,255,65,0.5)]" : "bg-cyber-green-muted"}`} />
                   <div className="min-w-0">
                     <p className="text-sm font-mono text-cyber-green truncate">{inst.instanceId}</p>
                     <div className="flex items-center gap-2 mt-0.5">
@@ -240,12 +240,12 @@ export function InstancesPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {!inst.connected && (
+                  {!inst.isConnected && (
                     <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleScanQR(inst.instanceId) }} disabled={scanningId === inst.instanceId}>
                       <QrCode size={13} className="mr-1" /> QR
                     </Button>
                   )}
-                  {inst.connected && (
+                  {inst.isConnected && (
                     <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleLogout(inst.instanceId) }}>
                       <WifiOff size={13} />
                     </Button>

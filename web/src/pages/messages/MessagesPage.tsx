@@ -72,7 +72,7 @@ export function MessagesPage() {
       try {
         const res = await api.get<ApiResponse<{ instances: Instance[]; total: number }>>("/api/instances?all=true")
         if (res.data.success && res.data.data) {
-          setInstances((res.data.data.instances || []).filter((i) => i.connected))
+          setInstances((res.data.data.instances || []).filter((i) => i.isConnected))
         }
       } catch { /* ignore */ }
     }

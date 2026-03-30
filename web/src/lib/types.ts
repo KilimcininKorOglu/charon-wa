@@ -51,7 +51,7 @@ export interface Instance {
   used: boolean
   jid: string
   phoneNumber: string
-  connected: boolean
+  isConnected: boolean
 }
 
 // Warming
