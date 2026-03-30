@@ -128,7 +128,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 | WebSocket  | [Gorilla WebSocket](https://github.com/gorilla/websocket)   |
 | AI         | Google Gemini API                                           |
 | Frontend   | React 19 + Vite + TypeScript + TailwindCSS v4              |
-| Process    | PM2 (production) / Docker (development)                     |
+| Container  | Docker / Docker Compose                                     |
 
 ---
 
@@ -140,8 +140,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 - Node.js 22+ and npm (for frontend)
 - PostgreSQL 12 or later
 - Make (build tool)
-- (Optional) Docker and Docker Compose for development
-- (Optional) PM2 for production process management
+- Docker and Docker Compose
 
 ### Build
 
@@ -316,28 +315,6 @@ The worker runs as a standalone binary and communicates with the main API to sen
 ---
 
 ## Deployment
-
-### Running with PM2 (Production)
-
-PM2 is a process manager that keeps your Go binaries alive, handles restarts on crash, manages logs, and enables auto-start on system boot. The project includes an `ecosystem.config.js` that manages both the API server and worker:
-
-```bash
-# Build first
-make build
-
-# Start both API and worker
-pm2 start ecosystem.config.js
-
-# Save and enable startup on boot
-pm2 save
-pm2 startup
-
-# Monitor
-pm2 monit
-
-# View logs
-pm2 logs
-```
 
 ### Docker Production Build
 

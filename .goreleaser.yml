@@ -56,7 +56,6 @@ archives:
     files:
       - README.md
       - .env.example
-      - ecosystem.config.js
 
 checksum:
   name_template: 'checksums.txt'
