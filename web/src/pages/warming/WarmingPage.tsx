@@ -6,7 +6,7 @@ import { Input } from "../../components/ui/Input"
 import {
   Flame, Plus, Trash2, Play, Pause, Square, RotateCcw, ScrollText,
   FileText, RefreshCw, X, ChevronDown, ChevronRight, ArrowUp, ArrowDown,
-  Sparkles, LayoutTemplate, Edit3, Check,
+  Sparkles, LayoutTemplate, Edit3, Check, Save,
 } from "lucide-react"
 import api from "../../lib/api"
 import type {
@@ -58,6 +58,9 @@ export function WarmingPage() {
   const [editingLine, setEditingLine] = useState<number | null>(null)
   const [editContent, setEditContent] = useState("")
   const [genCount, setGenCount] = useState(5)
+  const [selectedScript, setSelectedScript] = useState<WarmingScript | null>(null)
+  const [editScript, setEditScript] = useState({ title: "", description: "", category: "" })
+  const [savingScript, setSavingScript] = useState(false)
 
   // Templates
   const [templates, setTemplates] = useState<WarmingTemplate[]>([])
@@ -167,7 +170,7 @@ export function WarmingPage() {
   }
   const deleteScript = async (id: number) => {
     if (!confirm("Delete script?")) return
-    try { await api.delete(`/api/warming/scripts/${id}`); toast.success("Deleted"); if (expandedScript === id) setExpandedScript(null); fetchScripts() }
+    try { await api.delete(`/api/warming/scripts/${id}`); toast.success("Deleted"); if (expandedScript === id) setExpandedScript(null); if (selectedScript?.id === id) setSelectedScript(null); fetchScripts() }
     catch { toast.error("Failed") }
   }
   const toggleScript = (id: number) => {
@@ -213,6 +216,19 @@ export function WarmingPage() {
     })
     try { await api.put(`/api/warming/scripts/${expandedScript}/lines/reorder`, { lines: reordered }); fetchScriptLines(expandedScript) }
     catch { toast.error("Reorder failed") }
+  }
+
+  const selectScript = (script: WarmingScript) => {
+    setSelectedScript(script)
+    setEditScript({ title: script.title, description: script.description, category: script.category })
+  }
+  const saveScript = async () => {
+    if (!selectedScript) return
+    setSavingScript(true)
+    try {
+      await api.put(`/api/warming/scripts/${selectedScript.id}`, editScript)
+      toast.success("Script updated"); fetchScripts()
+    } catch { toast.error("Failed to update") } finally { setSavingScript(false) }
   }
 
   // ─── TEMPLATE ACTIONS ──────────────────────────────────
@@ -407,7 +423,8 @@ export function WarmingPage() {
 
       {/* ═══ SCRIPTS TAB ═══ */}
       {tab === "scripts" && (
-        <div>
+        <div className="flex gap-4">
+        <div className="flex-1 min-w-0">
           <div className="flex justify-end gap-2 mb-4">
             <Button variant="ghost" size="sm" onClick={fetchScripts}><RefreshCw size={14} className="mr-1.5" /> Refresh</Button>
             <Button size="sm" onClick={() => setShowCreateScript(true)}><Plus size={14} className="mr-1.5" /> New Script</Button>
@@ -432,14 +449,17 @@ export function WarmingPage() {
             scripts.length === 0 ? <Card><p className="text-cyber-green-muted text-sm text-center py-8">No scripts yet.</p></Card> :
               <div className="space-y-2">{scripts.map(script => (
                 <div key={script.id}>
-                  <Card className={`cursor-pointer transition-colors ${expandedScript === script.id ? "border-cyber-green/30" : ""}`}>
+                  <Card className={`cursor-pointer transition-colors ${expandedScript === script.id ? "border-cyber-green/30" : ""} ${selectedScript?.id === script.id ? "bg-cyber-green/5" : ""}`}>
                     <div className="flex items-center justify-between" onClick={() => toggleScript(script.id)}>
                       <div className="flex items-center gap-2">
                         {expandedScript === script.id ? <ChevronDown size={14} className="text-cyber-green" /> : <ChevronRight size={14} className="text-cyber-green-muted" />}
                         <p className="text-sm font-bold text-cyber-green">{script.title}</p>
                         <Badge variant="muted">{script.category}</Badge>
                       </div>
-                      <Button variant="danger" size="sm" onClick={(e) => { e.stopPropagation(); deleteScript(script.id) }}><Trash2 size={13} /></Button>
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <Button variant="outline" size="sm" onClick={() => selectScript(script)}><Edit3 size={13} /></Button>
+                        <Button variant="danger" size="sm" onClick={() => deleteScript(script.id)}><Trash2 size={13} /></Button>
+                      </div>
                     </div>
 
                     {/* ── EXPANDED LINES ── */}
@@ -496,6 +516,27 @@ export function WarmingPage() {
                   </Card>
                 </div>
               ))}</div>}
+        </div>
+
+        {/* Script Edit Panel */}
+        {selectedScript && (
+          <div className="w-80 shrink-0">
+            <Card>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-cyber-green-dim uppercase">Edit Script</h3>
+                <button onClick={() => setSelectedScript(null)} className="text-cyber-green-muted hover:text-cyber-green cursor-pointer"><X size={14} /></button>
+              </div>
+              <div className="space-y-3">
+                <Input label="Title" value={editScript.title} onChange={(e) => setEditScript({ ...editScript, title: e.target.value })} />
+                <Input label="Description" value={editScript.description} onChange={(e) => setEditScript({ ...editScript, description: e.target.value })} />
+                <Input label="Category" value={editScript.category} onChange={(e) => setEditScript({ ...editScript, category: e.target.value })} />
+                <Button onClick={saveScript} loading={savingScript} disabled={!editScript.title}>
+                  <Save size={12} className="mr-1" /> Save Changes
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
         </div>
       )}
 
