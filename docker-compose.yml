@@ -1,0 +1,61 @@
+services:
+  db-init:
+    image: postgres:17-alpine
+    restart: "no"
+    environment:
+      DB_INIT_URL: ${DB_INIT_URL}
+    volumes:
+      - ./docker/init-db.sql:/init-db.sql:ro
+    command: ["sh", "-c", "psql $DB_INIT_URL -f /init-db.sql"]
+    networks:
+      - coolify
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "2121"
+    volumes:
+      - hermeswa-uploads:/app/uploads
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:2121/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+    networks:
+      - coolify
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["./worker"]
+    environment:
+      OUTBOX_API_BASEURL: http://api:2121
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f worker || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    networks:
+      - coolify
+
+networks:
+  coolify:
+    external: true
+
+volumes:
+  hermeswa-uploads:
