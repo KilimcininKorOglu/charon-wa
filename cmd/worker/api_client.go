@@ -126,6 +126,9 @@ func (c *HermeswaClient) refresh() error {
 	}
 
 	c.AccessToken = res.Data.AccessToken
+	if res.Data.RefreshToken != "" {
+		c.RefreshToken = res.Data.RefreshToken
+	}
 	c.ExpiresAt = time.Now().Add(50 * time.Minute)
 
 	return nil
