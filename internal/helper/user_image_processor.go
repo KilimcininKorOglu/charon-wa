@@ -12,9 +12,9 @@ import (
 	"mime/multipart"
 	"strings"
 
-	"github.com/vegidio/webp-go"
 	"github.com/disintegration/imaging"
 	_ "github.com/mat/besticon/ico"
+	"github.com/vegidio/webp-go"
 )
 
 const (

@@ -34,7 +34,7 @@ type Instance struct {
 	WebhookURL      sql.NullString
 	WebhookSecret   sql.NullString
 	Used            bool           `json:"used"`
-	Description      sql.NullString `json:"description"`
+	Description     sql.NullString `json:"description"`
 	CreatedBy       sql.NullInt64  `json:"created_by"`
 }
 
@@ -60,7 +60,7 @@ type InstanceResp struct {
 	ExistsInWhatsmeow bool      `json:"existsInWhatsmeow"`
 	Circle            string    `json:"circle"`
 	Used              bool      `json:"used"`
-	Description        string    `json:"description"`
+	Description       string    `json:"description"`
 	CreatedBy         int64     `json:"createdBy,omitempty"`
 }
 
@@ -521,9 +521,9 @@ func ToResponse(inst Instance) InstanceResp {
 
 // UpdateInstanceFieldsRequest for PATCH /instances/:instanceId
 type UpdateInstanceFieldsRequest struct {
-	Used       *bool   `json:"used"`       // pointer to allow null (optional)
+	Used        *bool   `json:"used"`        // pointer to allow null (optional)
 	Description *string `json:"description"` // pointer to allow null (optional)
-	Circle     *string `json:"circle"`     // pointer to allow null (optional)
+	Circle      *string `json:"circle"`      // pointer to allow null (optional)
 }
 
 // UpdateInstanceFields updates the used, description, and circle fields

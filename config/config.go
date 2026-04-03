@@ -18,4 +18,3 @@ var GeminiDefaultModel string
 var AIConversationHistoryLimit int
 var AIDefaultTemperature float64
 var AIDefaultMaxTokens int
-

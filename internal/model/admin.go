@@ -8,12 +8,12 @@ import (
 
 // AdminStats holds dashboard statistics
 type AdminStats struct {
-	TotalUsers          int `json:"totalUsers"`
-	ActiveUsers         int `json:"activeUsers"`
-	TotalInstances      int `json:"totalInstances"`
-	ConnectedInstances  int `json:"connectedInstances"`
-	ActiveWarmingRooms  int `json:"activeWarmingRooms"`
-	ActiveWorkers       int `json:"activeWorkers"`
+	TotalUsers         int `json:"totalUsers"`
+	ActiveUsers        int `json:"activeUsers"`
+	TotalInstances     int `json:"totalInstances"`
+	ConnectedInstances int `json:"connectedInstances"`
+	ActiveWarmingRooms int `json:"activeWarmingRooms"`
+	ActiveWorkers      int `json:"activeWorkers"`
 }
 
 // ListUsersParams holds pagination and filter parameters
@@ -238,4 +238,3 @@ func GetAdminStats() (*AdminStats, error) {
 
 	return stats, nil
 }
-

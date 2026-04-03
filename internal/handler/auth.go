@@ -387,6 +387,7 @@ func GetStatus(c echo.Context) error {
 		"jid":         session.JID,
 	})
 }
+
 // GET /instances?all=true
 func GetAllInstances(c echo.Context) error {
 

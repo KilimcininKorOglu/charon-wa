@@ -68,4 +68,3 @@ func LogAction(log *AuditLog) error {
 
 	return nil
 }
-
