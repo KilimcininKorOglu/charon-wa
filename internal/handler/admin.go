@@ -5,9 +5,58 @@ import (
 	"strconv"
 
 	"hermeswa/internal/model"
+	"hermeswa/internal/service"
 
 	"github.com/labstack/echo/v4"
 )
+
+// AdminCreateUserRequest represents the admin user creation request
+type AdminCreateUserRequest struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	FullName string `json:"full_name,omitempty"`
+	Role     string `json:"role,omitempty"`
+}
+
+// AdminCreateUser creates a new user (admin only)
+// POST /api/admin/users
+func AdminCreateUser(c echo.Context) error {
+	var req AdminCreateUserRequest
+	if err := c.Bind(&req); err != nil {
+		return ErrorResponse(c, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST", err.Error())
+	}
+
+	if req.Username == "" || req.Email == "" || req.Password == "" {
+		return ErrorResponse(c, http.StatusBadRequest, "Username, email, and password are required", "MISSING_FIELDS", "")
+	}
+
+	// Default role to "user" if not provided
+	if req.Role == "" {
+		req.Role = "user"
+	}
+
+	// Validate role
+	validRoles := map[string]bool{"admin": true, "user": true, "viewer": true}
+	if !validRoles[req.Role] {
+		return ErrorResponse(c, http.StatusBadRequest, "Invalid role", "INVALID_ROLE", "Valid roles: admin, user, viewer")
+	}
+
+	createReq := model.CreateUserRequest{
+		Username: req.Username,
+		Email:    req.Email,
+		Password: req.Password,
+		FullName: req.FullName,
+		Role:     req.Role,
+	}
+
+	user, err := service.RegisterUser(createReq)
+	if err != nil {
+		return ErrorResponse(c, http.StatusBadRequest, err.Error(), "USER_CREATION_FAILED", "")
+	}
+
+	return SuccessResponse(c, http.StatusCreated, "User created successfully", user.ToResponse())
+}
 
 // ListUsers returns paginated list of all users (admin only)
 func ListUsers(c echo.Context) error {

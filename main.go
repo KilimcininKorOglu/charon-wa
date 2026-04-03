@@ -218,7 +218,6 @@ func main() {
 	// =====================================================
 
 	// New user authentication endpoints
-	e.POST("/register", handler.Register)
 	e.POST("/login", handler.LoginUser)
 	e.POST("/refresh", handler.RefreshToken)
 
@@ -285,6 +284,7 @@ func main() {
 	// ADMIN ROUTES (Admin Only)
 	// =====================================================
 	admin := api.Group("/admin", customMiddleware.RequireAdmin)
+	admin.POST("/users", handler.AdminCreateUser)
 	admin.GET("/users", handler.ListUsers)
 	admin.GET("/users/:id", handler.GetUser)
 	admin.PATCH("/users/:id", handler.UpdateUser)
