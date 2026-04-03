@@ -2,6 +2,7 @@ package handler
 
 import (
 	"database/sql"
+	"hermeswa/internal/helper"
 	"hermeswa/internal/model"
 	"hermeswa/internal/service"
 	"net/http"
@@ -109,6 +110,13 @@ func CreateWorkerConfig(c echo.Context) error {
 		req.IntervalMinSeconds = 10 // Default
 	}
 
+	// Validate webhook URL if provided
+	if req.WebhookURL != "" {
+		if err := helper.ValidateExternalURL(req.WebhookURL); err != nil {
+			return ErrorResponse(c, http.StatusBadRequest, "Invalid webhook URL", "INVALID_URL", err.Error())
+		}
+	}
+
 	// Map to model
 	config := model.WorkerConfig{
 		WorkerName:         req.WorkerName,
@@ -194,6 +202,13 @@ func UpdateWorkerConfig(c echo.Context) error {
 
 	if req.IntervalMinSeconds < 1 {
 		req.IntervalMinSeconds = 10
+	}
+
+	// Validate webhook URL if provided
+	if req.WebhookURL != "" {
+		if err := helper.ValidateExternalURL(req.WebhookURL); err != nil {
+			return ErrorResponse(c, http.StatusBadRequest, "Invalid webhook URL", "INVALID_URL", err.Error())
+		}
 	}
 
 	// Map to model

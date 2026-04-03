@@ -125,13 +125,25 @@ func CreateMediaMessage(uploaded whatsmeow.UploadResponse, caption, filename, me
 
 // DownloadFile downloads file from URL and returns data and filename
 func DownloadFile(url string) ([]byte, string, error) {
-	// Create HTTP client with timeout
+	// Validate URL to prevent SSRF attacks
+	if err := ValidateExternalURL(url); err != nil {
+		return nil, "", fmt.Errorf("URL validation failed: %v", err)
+	}
+
+	// Create HTTP client with SSRF-safe transport
 	client := &http.Client{
 		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DialContext: SSRFSafeDialContext,
+		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// Follow up to 10 redirects
 			if len(via) >= 10 {
 				return fmt.Errorf("stopped after 10 redirects")
+			}
+			// Validate redirect target URL
+			if err := ValidateExternalURL(req.URL.String()); err != nil {
+				return fmt.Errorf("redirect to blocked URL: %v", err)
 			}
 			return nil
 		},

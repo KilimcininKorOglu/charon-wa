@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"net/http"
 
+	"hermeswa/internal/helper"
 	"hermeswa/internal/model"
 	"hermeswa/internal/service"
 
@@ -37,10 +38,10 @@ func SetWebhookConfig(c echo.Context) error {
 			"Field 'url' is required", "VALIDATION_ERROR", "")
 	}
 
-	// minimal check for http/https
-	if !(len(req.URL) > 7 && (req.URL[:7] == "http://" || req.URL[:8] == "https://")) {
+	// Validate webhook URL (scheme + no private IPs)
+	if err := helper.ValidateExternalURL(req.URL); err != nil {
 		return ErrorResponse(c, http.StatusBadRequest,
-			"webhook url must start with http:// or https://", "INVALID_URL", "")
+			"Invalid webhook URL", "INVALID_URL", err.Error())
 	}
 
 	// get current instance (to know existing secret)
