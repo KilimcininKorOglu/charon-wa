@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"hermeswa/internal/model"
 	"hermeswa/internal/service"
 	"hermeswa/internal/ws"
 
@@ -47,11 +48,27 @@ func WebSocketHandler(hub *ws.Hub) echo.HandlerFunc {
 			})
 		}
 
-		_, err := service.ValidateAccessToken(token)
+		claims, err := service.ValidateAccessToken(token)
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]interface{}{
 				"success": false,
 				"message": "Invalid or expired token",
+			})
+		}
+
+		// Check token blacklist (logout, password change)
+		if blacklisted, _ := model.IsTokenBlacklisted(token); blacklisted {
+			return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+				"success": false,
+				"message": "Token has been revoked",
+			})
+		}
+
+		// Check user-wide invalidation (account disabled)
+		if blacklisted, _ := model.IsUserBlacklisted(claims.UserID); blacklisted {
+			return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+				"success": false,
+				"message": "Account has been disabled",
 			})
 		}
 
