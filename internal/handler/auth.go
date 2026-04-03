@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"hermeswa/internal/helper"
 	"hermeswa/internal/model"
 	"hermeswa/internal/service"
 	"hermeswa/internal/ws"
@@ -55,6 +56,18 @@ func Login(c echo.Context) error {
 		return ErrorResponse(c, 400, "Field 'circle' is required", "CIRCLE_REQUIRED", "")
 	}
 
+	// Get current user from context (set by JWT middleware)
+	userClaims, _ := c.Get("user_claims").(*service.Claims)
+
+	// Check instance creation limit for non-admin users
+	if userClaims != nil && userClaims.Role != "admin" {
+		maxInstances := helper.GetEnvAsInt("MAX_INSTANCES_PER_USER", 10)
+		instanceCount, err := model.CountUserInstances(userClaims.UserID)
+		if err == nil && instanceCount >= maxInstances {
+			return ErrorResponse(c, 429, "Instance creation limit reached", "INSTANCE_LIMIT", fmt.Sprintf("Maximum %d instances per user", maxInstances))
+		}
+	}
+
 	session, err := service.CreateSession(instanceID)
 	if err != nil {
 		return ErrorResponse(c, 400, "Failed to create session", "CREATE_SESSION_FAILED", err.Error())
@@ -75,8 +88,7 @@ func Login(c echo.Context) error {
 		})
 	}
 
-	// Get current user from context (set by JWT middleware)
-	userClaims, ok := c.Get("user_claims").(*service.Claims)
+	ok := userClaims != nil
 	var createdBy sql.NullInt64
 	if ok && userClaims != nil {
 		createdBy = sql.NullInt64{Int64: userClaims.UserID, Valid: true}
