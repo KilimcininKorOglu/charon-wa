@@ -149,13 +149,25 @@ func CreateWarmingRoomService(req *warmingModel.CreateWarmingRoomRequest, userID
 		return nil, ErrRoomIntervalInvalid
 	}
 
-	// Check if script exists
-	_, err := warmingModel.GetWarmingScriptByID(int(req.ScriptID))
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
+	// Check if script exists and belongs to this user (or is a shared/admin script)
+	if !isAdmin {
+		isOwner, err := warmingModel.CheckScriptOwnership(int(req.ScriptID), userID)
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				return nil, errors.New("script not found")
+			}
+			return nil, fmt.Errorf("failed to verify script ownership: %w", err)
+		}
+		if !isOwner {
 			return nil, errors.New("script not found")
 		}
-		return nil, fmt.Errorf("failed to verify script: %w", err)
+	} else {
+		if _, err := warmingModel.GetWarmingScriptByID(int(req.ScriptID)); err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				return nil, errors.New("script not found")
+			}
+			return nil, fmt.Errorf("failed to verify script: %w", err)
+		}
 	}
 
 	// Create in database
