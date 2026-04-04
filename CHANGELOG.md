@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.2.2] - 2026-04-04
+
+### Fixed
+- Use SSRFSafeDialContext in incoming message webhook delivery to prevent DNS rebinding attacks
+- Use SSRFSafeDialContext in worker outbox webhook delivery
+- Restrict instance creation to admin and user roles (block viewer)
+- Block viewer role from write operations in RequireInstanceAccess and RequirePhoneNumberAccess
+- Restrict API key creation and worker config writes to user and admin roles
+- Add X-Content-Type-Options nosniff and Content-Security-Policy headers to uploads route
+- Serve SVG uploads with Content-Disposition attachment to prevent stored XSS
+- Validate system identity old-file path stays within uploads directory before deletion
+- Make instance creation limit check atomic with PostgreSQL advisory lock
+- Make daily outbox limit check atomic with advisory lock; fail closed on DB error
+- Require room ownership for warming logs with null created_by
+- Validate room ownership before filtering warming logs by room_id
+- Enforce script ownership check in warming room creation
+- Scope available-circles and available-applications queries to the requesting user
+
 ## [1.2.1] - 2026-04-04
 
 ### Added
