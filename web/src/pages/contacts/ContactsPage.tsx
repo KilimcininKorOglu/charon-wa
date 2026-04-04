@@ -147,7 +147,7 @@ export function ContactsPage() {
           <div className="flex gap-2 items-end">
             <div className="flex-1">
               <label className="text-[10px] text-cyber-green-dim uppercase tracking-wider block mb-1.5"><CheckCircle size={10} className="inline mr-1" /> Number Check</label>
-              <input value={checkPhone} onChange={(e) => setCheckPhone(e.target.value)} placeholder="628xxxxxxxxxx"
+              <input value={checkPhone} onChange={(e) => setCheckPhone(e.target.value)} placeholder="905xxxxxxxxxx"
                 className="w-full bg-bg-input border border-border text-cyber-green px-3 py-2 text-xs font-mono focus:outline-none focus:border-cyber-green/50" />
             </div>
             <Button size="sm" onClick={handleCheck} loading={checking} disabled={!checkPhone || !selectedInstance}>Check</Button>

@@ -12,7 +12,7 @@ func TestExtractPhoneFromJID(t *testing.T) {
 		expected string
 	}{
 		{"905551234567@s.whatsapp.net", "905551234567"},
-		{"628123456789@s.whatsapp.net", "628123456789"},
+		{"905123456789@s.whatsapp.net", "905123456789"},
 		{"905551234567", "905551234567"},
 		{"", ""},
 	}
@@ -43,8 +43,8 @@ func TestFormatPhoneNumber(t *testing.T) {
 		{
 			name:        "no cc: full international Indonesia",
 			countryCode: "",
-			input:       "628123456789",
-			wantUser:    "628123456789",
+			input:       "905123456789",
+			wantUser:    "905123456789",
 		},
 		{
 			name:        "no cc: local format rejected",
@@ -103,19 +103,19 @@ func TestFormatPhoneNumber(t *testing.T) {
 			name:        "ID: leading 0 converted",
 			countryCode: "62",
 			input:       "08123456789",
-			wantUser:    "628123456789",
+			wantUser:    "905123456789",
 		},
 		{
 			name:        "ID: local without 0 converted",
 			countryCode: "62",
 			input:       "8123456789",
-			wantUser:    "628123456789",
+			wantUser:    "905123456789",
 		},
 		{
 			name:        "ID: full international unchanged",
 			countryCode: "62",
-			input:       "628123456789",
-			wantUser:    "628123456789",
+			input:       "905123456789",
+			wantUser:    "905123456789",
 		},
 	}
 

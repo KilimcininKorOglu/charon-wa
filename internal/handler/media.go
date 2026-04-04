@@ -391,7 +391,7 @@ func SendMediaURLByNumber(c echo.Context) error {
 
 // POST /send/by-number/:phoneNumber/media-file
 func SendMediaFileByNumber(c echo.Context) error {
-	// 0. Sender WhatsApp number from path (format: 6285xxxx...)
+	// 0. Sender WhatsApp number from path (format: 905545...)
 	phoneNumber := c.Param("phoneNumber")
 
 	to := c.FormValue("to")

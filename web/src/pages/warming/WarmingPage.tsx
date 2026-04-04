@@ -380,7 +380,7 @@ export function WarmingPage() {
                   )}
                   {roomForm.roomType === "HUMAN_VS_BOT" && (
                     <>
-                      <Input label="Whitelisted Number" value={roomForm.whitelistedNumber || ""} onChange={(e) => setRoomForm({ ...roomForm, whitelistedNumber: e.target.value })} placeholder="628xxxxxxxxxx" />
+                      <Input label="Whitelisted Number" value={roomForm.whitelistedNumber || ""} onChange={(e) => setRoomForm({ ...roomForm, whitelistedNumber: e.target.value })} placeholder="905xxxxxxxxxx" />
                       <div className="grid grid-cols-2 gap-3">
                         <Input label="Reply Delay Min (s)" type="number" value={roomForm.replyDelayMin || 10} onChange={(e) => setRoomForm({ ...roomForm, replyDelayMin: parseInt(e.target.value) || 0 })} />
                         <Input label="Reply Delay Max (s)" type="number" value={roomForm.replyDelayMax || 60} onChange={(e) => setRoomForm({ ...roomForm, replyDelayMax: parseInt(e.target.value) || 0 })} />

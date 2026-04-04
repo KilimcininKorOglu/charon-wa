@@ -369,7 +369,7 @@ export function MessagesPage() {
             {leftTab === "check" && (
               <div className="space-y-2 p-1">
                 <div className="flex gap-1.5">
-                  <input value={checkPhone} onChange={(e) => setCheckPhone(e.target.value)} placeholder="628xxxxxxxxxx"
+                  <input value={checkPhone} onChange={(e) => setCheckPhone(e.target.value)} placeholder="905xxxxxxxxxx"
                     className="flex-1 bg-bg-input border border-border text-cyber-green px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-cyber-green/50" />
                   <Button size="sm" onClick={handleCheckNumber} loading={checking} disabled={!checkPhone}><CheckCircle size={12} /></Button>
                 </div>

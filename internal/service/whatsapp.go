@@ -112,9 +112,9 @@ func eventHandler(instanceID string) func(evt interface{}) {
 			}
 
 			if exists && session.Client.Store.ID != nil {
-				// Extract phoneNumber from JID (e.g. "6285148107612:38@s.whatsapp.net")
+				// Extract phoneNumber from JID (e.g. "905123456789:38@s.whatsapp.net")
 				jid := session.Client.Store.ID
-				phoneNumber := jid.User // usually already in 6285xxxx format
+				phoneNumber := jid.User // usually already in 905545 format
 
 				platform := "" // if this field exists; can be empty otherwise
 				if err := model.UpdateInstanceOnConnected(
@@ -433,7 +433,7 @@ func LoadAllDevices() error {
 		// 4) Update status in DB that this instance successfully reconnected
 		//    (if client.IsConnected() == true)
 		if client.IsConnected() {
-			phoneNumber := helper.ExtractPhoneFromJID(jid) // e.g. "6285148107612"
+			phoneNumber := helper.ExtractPhoneFromJID(jid) // e.g. "905123456789"
 
 			if err := model.UpdateInstanceOnConnected(
 				instanceID,

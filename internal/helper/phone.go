@@ -98,7 +98,7 @@ func ShouldSkipValidation(phone string) bool {
 }
 
 // ExtractPhoneFromJID extracts the phone number from a WhatsApp JID string.
-// "6285148107612:43@s.whatsapp.net" → "6285148107612"
+// "905123456789:43@s.whatsapp.net" → "905123456789"
 // "905551234567@s.whatsapp.net"     → "905551234567"
 func ExtractPhoneFromJID(jid string) string {
 	atSplit := strings.SplitN(jid, "@", 2)

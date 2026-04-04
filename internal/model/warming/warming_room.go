@@ -155,14 +155,14 @@ func CheckDuplicateWhitelistedNumber(whitelistedNumber string, excludeRoomID *uu
 
 // CreateWarmingRoom inserts new room
 func CreateWarmingRoom(req *CreateWarmingRoomRequest, userID int64) (*WarmingRoom, error) {
-	// Normalize whitelisted number for HUMAN_VS_BOT rooms (08xxx -> 628xxx)
+	// Normalize whitelisted number for HUMAN_VS_BOT rooms (08xxx -> 905xxx)
 	if req.RoomType == "HUMAN_VS_BOT" && req.WhitelistedNumber != "" {
 		// Use existing FormatPhoneNumber logic to normalize
 		cleaned := strings.ReplaceAll(req.WhitelistedNumber, " ", "")
 		cleaned = strings.ReplaceAll(cleaned, "-", "")
 		cleaned = strings.TrimPrefix(cleaned, "+")
 
-		// Convert 08xxx to 628xxx
+		// Convert 08xxx to 905xxx
 		if strings.HasPrefix(cleaned, "08") {
 			cleaned = "62" + cleaned[1:]
 		} else if strings.HasPrefix(cleaned, "8") && !strings.HasPrefix(cleaned, "62") {

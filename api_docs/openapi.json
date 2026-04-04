@@ -142,7 +142,7 @@
                   "data": {
                     "instanceId": "51029a1911728ac18e0dee34e0ceb97d",
                     "isConnected": true,
-                    "jid": "6285148107612:94@s.whatsapp.net"
+                    "jid": "905123456789:94@s.whatsapp.net"
                   }
                 }
               }
@@ -673,7 +673,7 @@
                   "success": true,
                   "message": "Message sent to group",
                   "data": {
-                    "from": "6285148107612",
+                    "from": "905123456789",
                     "groupJid": "120363420893482288@g.us",
                     "messageId": "3EB06065BF504095E8C4EC",
                     "timestamp": 1763439114
@@ -790,7 +790,7 @@
                   "data": {
                     "fileName": "OIP.jpg",
                     "fileSize": 10245,
-                    "from": "6285148107612",
+                    "from": "905123456789",
                     "groupJid": "120363420893482288@g.us",
                     "mediaType": "image",
                     "messageId": "3EB09E9DE4368B70A6F6FA",
@@ -1333,7 +1333,7 @@
                 ]
               },
               "example": {
-                "to": "6285172462751",
+                "to": "905123456789",
                 "message": "Hello from HERMESWA!"
               }
             }
@@ -1416,7 +1416,7 @@
                 "type": "object",
                 "properties": {
                   "to": {
-                    "example": "6285172462751",
+                    "example": "905123456789",
                     "type": "string"
                   },
                   "caption": {
@@ -1482,7 +1482,7 @@
                 ]
               },
               "example": {
-                "to": "6285172462751",
+                "to": "905123456789",
                 "message": "Hello from HERMESWA!"
               }
             }
@@ -1538,7 +1538,7 @@
                   "data": {
                     "messageId": "3EB06AB12752DC16D14F31",
                     "timestamp": 1763899563,
-                    "to": "6285172462751",
+                    "to": "905123456789",
                     "verified": true
                   }
                 }
@@ -1586,7 +1586,7 @@
                 ]
               },
               "example": {
-                "to": "6285172462751",
+                "to": "905123456789",
                 "mediaUrl": "https://picsum.photos/400/300",
                 "caption": "File URL!"
               }
@@ -1658,7 +1658,7 @@
                     "mediaType": "image",
                     "messageId": "3EB0B277B9EBBEB8CEABF3",
                     "timestamp": 1763899647,
-                    "to": "6285172462751",
+                    "to": "905123456789",
                     "verified": true
                   }
                 }
@@ -1690,7 +1690,7 @@
                 "type": "object",
                 "properties": {
                   "to": {
-                    "example": "6285172462751",
+                    "example": "905123456789",
                     "type": "string"
                   },
                   "caption": {
@@ -1776,7 +1776,7 @@
                     "mediaType": "document",
                     "messageId": "3EB00EFC2912068CFF3378",
                     "timestamp": 1763899660,
-                    "to": "6285172462751",
+                    "to": "905123456789",
                     "verified": true
                   }
                 }
@@ -3285,7 +3285,7 @@
                   "sendRealMessage"
                 ]
               },
-              "example": "// ==========================================\r\n// CREATE WARMING ROOM - POSTMAN PAYLOADS\r\n// ==========================================\r\n\r\n// 1. BOT vs BOT (Automated Script Exchange)\r\n{\r\n  \"name\": \"Bot A vs Bot B - Auto Conversation\",\r\n  \"senderInstanceId\": \"cd372ce58d70a13ca2d777ee2b5ac3eb\",\r\n  \"receiverInstanceId\": \"89d524a43f5782c47e6889d885ae848f\",\r\n  \"scriptId\": 10,\r\n  \"roomType\": \"BOT_VS_BOT\",\r\n  \"intervalMinSeconds\": 5,\r\n  \"intervalMaxSeconds\": 15,\r\n  \"sendRealMessage\": false\r\n}\r\n\r\n// // 2. HUMAN vs BOT - Script-Based Reply (No AI)\r\n// {\r\n//   \"name\": \"Chat with Personal Number - Script Mode\",\r\n//   \"senderInstanceId\": \"89d524a43f5782c47e6889d885ae848f\",\r\n//   \"scriptId\": 10,\r\n//   \"sendRealMessage\": true,\r\n//   \"roomType\": \"HUMAN_VS_BOT\",\r\n//   \"whitelistedNumber\": \"6285172462751\",\r\n//   \"replyDelayMin\": 10,\r\n//   \"replyDelayMax\": 60,\r\n//   \"aiEnabled\": false\r\n// }\r\n\r\n// // 3. HUMAN vs BOT - AI Mode (Minimal)\r\n// {\r\n//   \"name\": \"Chat with Personal Number - AI Mode\",\r\n//   \"senderInstanceId\": \"89d524a43f5782c47e6889d885ae848f\",\r\n//   \"scriptId\": 10,\r\n//   \"sendRealMessage\": true,\r\n//   \"roomType\": \"HUMAN_VS_BOT\",\r\n//   \"whitelistedNumber\": \"6285172462751\",\r\n//   \"replyDelayMin\": 15,\r\n//   \"replyDelayMax\": 45,\r\n//   \"aiEnabled\": true\r\n// }\r\n\r\n// // 4. HUMAN vs BOT - AI Mode (Full Custom)\r\n// {\r\n//   \"name\": \"Chat with Personal Number - AI Mode\",\r\n//   \"senderInstanceId\": \"89d524a43f5782c47e6889d885ae848f\",\r\n//   \"scriptId\": 10,\r\n//   \"sendRealMessage\": true,\r\n//   \"roomType\": \"HUMAN_VS_BOT\",\r\n//   \"whitelistedNumber\": \"6285172462751\",\r\n//   \"replyDelayMin\": 15,\r\n//   \"replyDelayMax\": 45,\r\n//   \"aiEnabled\": true,\r\n//   \"aiProvider\": \"gemini\",\r\n//   \"aiModel\": \"gemini-flash-latest\",\r\n//   \"aiSystemPrompt\": \"You are a casual friend who likes to joke and use Indonesian slang. Be friendly, fun, and relatable. Use bahasa gaul when appropriate.\",\r\n//   \"aiTemperature\": 0.8,\r\n//   \"aiMaxTokens\": 200,\r\n//   \"fallbackToScript\": true\r\n// }\r\n\r\n// // 5. HUMAN vs BOT - AI Mode (Professional)\r\n// {\r\n//   \"name\": \"Professional Customer Support - AI\",\r\n//   \"senderInstanceId\": \"89d524a43f5782c47e6889d885ae848f\",\r\n//   \"scriptId\": 10,\r\n//   \"sendRealMessage\": true,\r\n//   \"roomType\": \"HUMAN_VS_BOT\",\r\n//   \"whitelistedNumber\": \"6285172462751\",\r\n//   \"replyDelayMin\": 10,\r\n//   \"replyDelayMax\": 30,\r\n//   \"aiEnabled\": true,\r\n//   \"aiProvider\": \"gemini\",\r\n//   \"aiModel\": \"gemini-flash-latest\",\r\n//   \"aiSystemPrompt\": \"You are a professional customer service representative for an e-commerce company. Be polite, helpful, and efficient. Always maintain a professional tone.\",\r\n//   \"aiTemperature\": 0.7,\r\n//   \"aiMaxTokens\": 150,\r\n//   \"fallbackToScript\": true\r\n// }\r\n\r\n// NOTES:\r\n// - whitelistedNumber auto-converts: 08xxx → 628xxx\r\n// - senderInstanceId is the bot instance that will reply\r\n// - receiverInstanceId not needed for HUMAN_VS_BOT (leave empty or omit)"
+              "example": "// ==========================================\r\n// CREATE WARMING ROOM - POSTMAN PAYLOADS\r\n// ==========================================\r\n\r\n// 1. BOT vs BOT (Automated Script Exchange)\r\n{\r\n  \"name\": \"Bot A vs Bot B - Auto Conversation\",\r\n  \"senderInstanceId\": \"cd372ce58d70a13ca2d777ee2b5ac3eb\",\r\n  \"receiverInstanceId\": \"89d524a43f5782c47e6889d885ae848f\",\r\n  \"scriptId\": 10,\r\n  \"roomType\": \"BOT_VS_BOT\",\r\n  \"intervalMinSeconds\": 5,\r\n  \"intervalMaxSeconds\": 15,\r\n  \"sendRealMessage\": false\r\n}\r\n\r\n// // 2. HUMAN vs BOT - Script-Based Reply (No AI)\r\n// {\r\n//   \"name\": \"Chat with Personal Number - Script Mode\",\r\n//   \"senderInstanceId\": \"89d524a43f5782c47e6889d885ae848f\",\r\n//   \"scriptId\": 10,\r\n//   \"sendRealMessage\": true,\r\n//   \"roomType\": \"HUMAN_VS_BOT\",\r\n//   \"whitelistedNumber\": \"905123456789\",\r\n//   \"replyDelayMin\": 10,\r\n//   \"replyDelayMax\": 60,\r\n//   \"aiEnabled\": false\r\n// }\r\n\r\n// // 3. HUMAN vs BOT - AI Mode (Minimal)\r\n// {\r\n//   \"name\": \"Chat with Personal Number - AI Mode\",\r\n//   \"senderInstanceId\": \"89d524a43f5782c47e6889d885ae848f\",\r\n//   \"scriptId\": 10,\r\n//   \"sendRealMessage\": true,\r\n//   \"roomType\": \"HUMAN_VS_BOT\",\r\n//   \"whitelistedNumber\": \"905123456789\",\r\n//   \"replyDelayMin\": 15,\r\n//   \"replyDelayMax\": 45,\r\n//   \"aiEnabled\": true\r\n// }\r\n\r\n// // 4. HUMAN vs BOT - AI Mode (Full Custom)\r\n// {\r\n//   \"name\": \"Chat with Personal Number - AI Mode\",\r\n//   \"senderInstanceId\": \"89d524a43f5782c47e6889d885ae848f\",\r\n//   \"scriptId\": 10,\r\n//   \"sendRealMessage\": true,\r\n//   \"roomType\": \"HUMAN_VS_BOT\",\r\n//   \"whitelistedNumber\": \"905123456789\",\r\n//   \"replyDelayMin\": 15,\r\n//   \"replyDelayMax\": 45,\r\n//   \"aiEnabled\": true,\r\n//   \"aiProvider\": \"gemini\",\r\n//   \"aiModel\": \"gemini-flash-latest\",\r\n//   \"aiSystemPrompt\": \"You are a casual friend who likes to joke and use Indonesian slang. Be friendly, fun, and relatable. Use bahasa gaul when appropriate.\",\r\n//   \"aiTemperature\": 0.8,\r\n//   \"aiMaxTokens\": 200,\r\n//   \"fallbackToScript\": true\r\n// }\r\n\r\n// // 5. HUMAN vs BOT - AI Mode (Professional)\r\n// {\r\n//   \"name\": \"Professional Customer Support - AI\",\r\n//   \"senderInstanceId\": \"89d524a43f5782c47e6889d885ae848f\",\r\n//   \"scriptId\": 10,\r\n//   \"sendRealMessage\": true,\r\n//   \"roomType\": \"HUMAN_VS_BOT\",\r\n//   \"whitelistedNumber\": \"905123456789\",\r\n//   \"replyDelayMin\": 10,\r\n//   \"replyDelayMax\": 30,\r\n//   \"aiEnabled\": true,\r\n//   \"aiProvider\": \"gemini\",\r\n//   \"aiModel\": \"gemini-flash-latest\",\r\n//   \"aiSystemPrompt\": \"You are a professional customer service representative for an e-commerce company. Be polite, helpful, and efficient. Always maintain a professional tone.\",\r\n//   \"aiTemperature\": 0.7,\r\n//   \"aiMaxTokens\": 150,\r\n//   \"fallbackToScript\": true\r\n// }\r\n\r\n// NOTES:\r\n// - whitelistedNumber auto-converts: 08xxx → 905xxx\r\n// - senderInstanceId is the bot instance that will reply\r\n// - receiverInstanceId not needed for HUMAN_VS_BOT (leave empty or omit)"
             }
           }
         },
@@ -3631,7 +3631,7 @@
                   "sendRealMessage"
                 ]
               },
-              "example": "// ==========================================\r\n// POSTMAN PAYLOAD EXAMPLES - WARMING ROOMS\r\n// ==========================================\r\n\r\n// 1. UPDATE BOT_VS_BOT Room (No changes)\r\n{\r\n  \"name\": \"Updated Bot Room\",\r\n  \"scriptId\": 10,\r\n  \"intervalMinSeconds\": 3,\r\n  \"intervalMaxSeconds\": 10,\r\n  \"sendRealMessage\": true\r\n}\r\n\r\n// // 2. UPDATE HUMAN_VS_BOT - Script-based Only\r\n// {\r\n//   \"name\": \"Customer Support (Script)\",\r\n//   \"scriptId\": 10,\r\n//   \"whitelistedNumber\": \"6285172462751\",\r\n//   \"replyDelayMin\": 10,\r\n//   \"replyDelayMax\": 30,\r\n//   \"aiEnabled\": false\r\n// }\r\n\r\n// // 3. UPDATE HUMAN_VS_BOT - AI Mode (Minimal - Recommended)\r\n// {\r\n//   \"name\": \"AI Assistant\",\r\n//   \"scriptId\": 10,\r\n//   \"whitelistedNumber\": \"6285172462751\",\r\n//   \"replyDelayMin\": 10,\r\n//   \"replyDelayMax\": 30,\r\n//   \"aiEnabled\": true\r\n// }\r\n\r\n// // 4. UPDATE HUMAN_VS_BOT - AI Mode (Full Control)\r\n// {\r\n//   \"name\": \"Smart Customer Support\",\r\n//   \"scriptId\": 10,\r\n//   \"whitelistedNumber\": \"6285172462751\",\r\n//   \"replyDelayMin\": 10,\r\n//   \"replyDelayMax\": 30,\r\n//   \"aiEnabled\": true,\r\n//   \"aiProvider\": \"gemini\",\r\n//   \"aiModel\": \"gemini-flash-latest\",\r\n//   \"aiSystemPrompt\": \"You are a friendly customer service assistant for an online store. Help customers with product inquiries, orders, and general questions. Be concise and professional.\",\r\n//   \"aiTemperature\": 0.7,\r\n//   \"aiMaxTokens\": 150,\r\n//   \"fallbackToScript\": true\r\n// }\r\n\r\n// // 5. UPDATE HUMAN_VS_BOT - Creative AI (High Temperature)\r\n// {\r\n//   \"name\": \"Creative AI Assistant\",\r\n//   \"scriptId\": 10,\r\n//   \"whitelistedNumber\": \"6285172462751\",\r\n//   \"replyDelayMin\": 15,\r\n//   \"replyDelayMax\": 45,\r\n//   \"aiEnabled\": true,\r\n//   \"aiProvider\": \"gemini\",\r\n//   \"aiModel\": \"gemini-flash-latest\",\r\n//   \"aiSystemPrompt\": \"You are a creative marketing assistant. Help with product descriptions, promotional content, and customer engagement. Be enthusiastic and persuasive.\",\r\n//   \"aiTemperature\": 0.9,\r\n//   \"aiMaxTokens\": 300,\r\n//   \"fallbackToScript\": false\r\n// }\r\n\r\n\r\n// DEFAULT VALUES (if not specified):\r\n// - aiProvider: \"gemini\"\r\n// - aiModel: \"gemini-1.5-flash\"\r\n// - aiSystemPrompt: \"You are a helpful customer service assistant...\"\r\n// - aiTemperature: 0.7\r\n// - aiMaxTokens: 150\r\n// - fallbackToScript: true"
+              "example": "// ==========================================\r\n// POSTMAN PAYLOAD EXAMPLES - WARMING ROOMS\r\n// ==========================================\r\n\r\n// 1. UPDATE BOT_VS_BOT Room (No changes)\r\n{\r\n  \"name\": \"Updated Bot Room\",\r\n  \"scriptId\": 10,\r\n  \"intervalMinSeconds\": 3,\r\n  \"intervalMaxSeconds\": 10,\r\n  \"sendRealMessage\": true\r\n}\r\n\r\n// // 2. UPDATE HUMAN_VS_BOT - Script-based Only\r\n// {\r\n//   \"name\": \"Customer Support (Script)\",\r\n//   \"scriptId\": 10,\r\n//   \"whitelistedNumber\": \"905123456789\",\r\n//   \"replyDelayMin\": 10,\r\n//   \"replyDelayMax\": 30,\r\n//   \"aiEnabled\": false\r\n// }\r\n\r\n// // 3. UPDATE HUMAN_VS_BOT - AI Mode (Minimal - Recommended)\r\n// {\r\n//   \"name\": \"AI Assistant\",\r\n//   \"scriptId\": 10,\r\n//   \"whitelistedNumber\": \"905123456789\",\r\n//   \"replyDelayMin\": 10,\r\n//   \"replyDelayMax\": 30,\r\n//   \"aiEnabled\": true\r\n// }\r\n\r\n// // 4. UPDATE HUMAN_VS_BOT - AI Mode (Full Control)\r\n// {\r\n//   \"name\": \"Smart Customer Support\",\r\n//   \"scriptId\": 10,\r\n//   \"whitelistedNumber\": \"905123456789\",\r\n//   \"replyDelayMin\": 10,\r\n//   \"replyDelayMax\": 30,\r\n//   \"aiEnabled\": true,\r\n//   \"aiProvider\": \"gemini\",\r\n//   \"aiModel\": \"gemini-flash-latest\",\r\n//   \"aiSystemPrompt\": \"You are a friendly customer service assistant for an online store. Help customers with product inquiries, orders, and general questions. Be concise and professional.\",\r\n//   \"aiTemperature\": 0.7,\r\n//   \"aiMaxTokens\": 150,\r\n//   \"fallbackToScript\": true\r\n// }\r\n\r\n// // 5. UPDATE HUMAN_VS_BOT - Creative AI (High Temperature)\r\n// {\r\n//   \"name\": \"Creative AI Assistant\",\r\n//   \"scriptId\": 10,\r\n//   \"whitelistedNumber\": \"905123456789\",\r\n//   \"replyDelayMin\": 15,\r\n//   \"replyDelayMax\": 45,\r\n//   \"aiEnabled\": true,\r\n//   \"aiProvider\": \"gemini\",\r\n//   \"aiModel\": \"gemini-flash-latest\",\r\n//   \"aiSystemPrompt\": \"You are a creative marketing assistant. Help with product descriptions, promotional content, and customer engagement. Be enthusiastic and persuasive.\",\r\n//   \"aiTemperature\": 0.9,\r\n//   \"aiMaxTokens\": 300,\r\n//   \"fallbackToScript\": false\r\n// }\r\n\r\n\r\n// DEFAULT VALUES (if not specified):\r\n// - aiProvider: \"gemini\"\r\n// - aiModel: \"gemini-1.5-flash\"\r\n// - aiSystemPrompt: \"You are a helpful customer service assistant...\"\r\n// - aiTemperature: 0.7\r\n// - aiMaxTokens: 150\r\n// - fallbackToScript: true"
             }
           }
         },
@@ -4132,9 +4132,9 @@
                     "businessName": "",
                     "isBusiness": false,
                     "isGroup": false,
-                    "jid": "62818414@s.whatsapp.net",
+                    "jid": "905545@s.whatsapp.net",
                     "name": "Rsud Raja Ahmad Tabib 414",
-                    "phoneNumber": "628117038414",
+                    "phoneNumber": "905123456789",
                     "profilePicture": "https://pps.whatsapp.net/v/t61.2464834057965368_n.jpg?ccb=11-4&oh=01_Q5Aa3gHCbvrsjp19uAK2UBHATs364jkuNvHWLAgsvBuUkFvNXQ&o",
                     "pushName": "",
                     "verifiedName": null
@@ -4170,7 +4170,7 @@
                   "type": "object",
                   "properties": {}
                 },
-                "example": "{\n    \"success\": true,\n    \"message\": \"Mutual groups retrieved successfully\",\n    \"data\": {\n        \"jid\": \"62822995@s.whatsapp.net\",\n        \"mutualGroups\": [\n            \"GOURP 1\",\n            \"GROUP 2\",\n            \"GROUP 3\",\n        ],\n        \"total\": 9\n    }\n}"
+                "example": "{\n    \"success\": true,\n    \"message\": \"Mutual groups retrieved successfully\",\n    \"data\": {\n        \"jid\": \"905545@s.whatsapp.net\",\n        \"mutualGroups\": [\n            \"GOURP 1\",\n            \"GROUP 2\",\n            \"GROUP 3\",\n        ],\n        \"total\": 9\n    }\n}"
               }
             },
             "headers": {}
@@ -6047,8 +6047,8 @@
                   "id_outbox": 2,
                   "status": 1,
                   "status_text": "success",
-                  "destination": "085172462xxx",
-                  "from_number": "628555666xxx",
+                  "destination": "905123456789",
+                  "from_number": "905545",
                   "application": "pengingat-esign",
                   "table_id": "",
                   "error_msg": ""
@@ -6239,8 +6239,8 @@
                   "data": {
                     "contacts": [
                       {
-                        "jid": "6285167451@s.whatsapp.net",
-                        "phoneNumber": "6285167454",
+                        "jid": "905123456789@s.whatsapp.net",
+                        "phoneNumber": "905545",
                         "name": "Mama Shankara",
                         "isGroup": false
                       }
@@ -6288,7 +6288,7 @@
                 ]
               },
               "example": {
-                "phone": "6285172462123"
+                "phone": "905545"
               }
             }
           }
@@ -6346,9 +6346,9 @@
                   "message": "Phone number checked",
                   "data": {
                     "isRegistered": false,
-                    "jid": "6285172462123@s.whatsapp.net",
+                    "jid": "905545@s.whatsapp.net",
                     "note": "Number is not registered. Message sending will be blocked unless ALLOW_9_DIGIT_PHONE_NUMBER=true is set",
-                    "phone": "6285172462123",
+                    "phone": "905545",
                     "willSkipValidation": false
                   }
                 }
@@ -6416,8 +6416,8 @@
                   "message": "Device info retrieved",
                   "data": {
                     "instanceId": "cf14d7e3e5ea0cfaa80fa1167a1e09e5",
-                    "jid": "6285182456761:38@s.whatsapp.net",
-                    "phoneNumber": "6285182456761"
+                    "jid": "905545:38@s.whatsapp.net",
+                    "phoneNumber": "905545"
                   }
                 }
               }
