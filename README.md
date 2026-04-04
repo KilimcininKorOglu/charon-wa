@@ -30,6 +30,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 - [WebSocket Events](#websocket-events)
 - [Webhook Integration](#webhook-integration)
 - [Admin API](#admin-api)
+- [API Key Management](#api-key-management)
 - [Contacts API](#contacts-api)
 - [API Reference](#api-reference)
 - [Disclaimer](#disclaimer)
@@ -188,6 +189,8 @@ cp .env.example .env
 ./bin/worker
 ```
 
+On first startup, if no admin user exists in the database, HERMESWA automatically creates a default admin account with credentials `admin` / `admin123`. Change the password immediately after first login.
+
 ---
 
 ## Authentication
@@ -340,10 +343,10 @@ Configure these in your `.env` file.
 | `DATABASE_URL`        | PostgreSQL URL for whatsmeow session storage | --      | `postgres://user:pass@localhost:5432/db`     |
 | `APP_DATABASE_URL`    | PostgreSQL URL for application data          | --      | `postgres://user:pass@localhost:5432/app`    |
 | `OUTBOX_DATABASE_URL` | PostgreSQL URL for outbox (optional)         | --      | `postgres://user:pass@localhost:5432/outbox` |
-| `JWT_SECRET`          | Secret key for JWT authentication            | --      | `your-secret-key`                            |
+| `JWT_SECRET`          | Secret key for JWT authentication (min 32 chars) | --  | `your-very-long-secret-key-here-32chars`     |
 | `PORT`                | Server listening port                        | `2121`  | `3000`                                       |
 | `BASEURL`             | Base URL/Host of the server                  | --      | `127.0.0.1`                                  |
-| `CORS_ALLOW_ORIGINS`  | Allowed origins for CORS                     | --      | `http://localhost:3000`                      |
+| `CORS_ALLOW_ORIGINS`  | Allowed origins for CORS (required)          | --      | `http://localhost:3000`                      |
 
 ### Features
 
@@ -952,6 +955,20 @@ Admin-only endpoints (requires JWT with `admin` role):
 | DELETE | `/api/admin/users/:id/instances/:instanceId` | Revoke instance from user      |
 
 Admin self-deletion is blocked. The last remaining admin cannot be deleted.
+
+## API Key Management
+
+Manage API keys for external integrations (requires JWT):
+
+| Method | Endpoint              | Description                     |
+|:-------|:----------------------|:--------------------------------|
+| POST   | `/api/api-keys`       | Create a new API key            |
+| GET    | `/api/api-keys`       | List all API keys for your user |
+| DELETE | `/api/api-keys/:id`   | Revoke and delete an API key    |
+
+API keys use the `X-API-Key` header and are scoped per user. The raw key (`hwa_...32hex`) is shown only once on creation — it is stored as a SHA-256 hash. An optional `application` field locks the key to a specific outbox application.
+
+---
 
 ## Contacts API
 
