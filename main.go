@@ -221,7 +221,16 @@ func main() {
 	e.POST("/login", handler.LoginUser)
 	e.POST("/refresh", handler.RefreshToken)
 
-	// Static file serving for uploaded files
+	// Static file serving for uploaded files — with security headers to prevent MIME sniffing
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			if strings.HasPrefix(c.Request().URL.Path, "/uploads/") {
+				c.Response().Header().Set("X-Content-Type-Options", "nosniff")
+				c.Response().Header().Set("Content-Security-Policy", "default-src 'none'")
+			}
+			return next(c)
+		}
+	})
 	e.Static("/uploads", "./uploads")
 
 	// WebSocket and health check
