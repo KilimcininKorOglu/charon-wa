@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.1] - 2026-04-04
+
+### Added
+- Production docker-compose for Coolify deployment with external network and named volumes
+
+### Changed
+- Renamed `docker-compose.yml` to `docker-compose.local.yml` for local development
+- Updated deployment and authentication documentation
+- Added API key management section to API docs
+
+### Fixed
+- Use `127.0.0.1` instead of `localhost` for Docker healthcheck (Alpine IPv6 resolution issue)
+- Handle nested spintax braces correctly with inside-out processing
+- Store rotated refresh token correctly in outbox worker
+
 ## [1.2.0] - 2026-03-30
 
 ### Added
