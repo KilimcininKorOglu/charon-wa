@@ -60,6 +60,13 @@ func GetAllWarmingLogs(roomID, status string, limit int, userID int64, isAdmin b
 		if err != nil {
 			return nil, fmt.Errorf("invalid room ID format: %w", err)
 		}
+		// For non-admin users, verify room ownership before filtering by it.
+		if !isAdmin {
+			isOwner, err := CheckRoomOwnership(roomID, userID)
+			if err != nil || !isOwner {
+				return nil, fmt.Errorf("forbidden: you do not have access to this room")
+			}
+		}
 		query += fmt.Sprintf(" AND room_id = $%d", argIndex)
 		args = append(args, roomUUID)
 		argIndex++
