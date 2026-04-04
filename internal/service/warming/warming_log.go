@@ -58,10 +58,19 @@ func GetWarmingLogByIDService(id int64, userID int64, isAdmin bool) (*warmingMod
 		return nil, fmt.Errorf("service: %w", err)
 	}
 
-	// RBAC: Check ownership for non-admin users
+	// RBAC: Check ownership for non-admin users.
+	// When created_by is NULL (worker-created log), fall back to room ownership.
 	if !isAdmin {
-		if log.CreatedBy.Valid && log.CreatedBy.Int64 != userID {
-			return nil, errors.New("forbidden: you do not own this log")
+		if log.CreatedBy.Valid {
+			if log.CreatedBy.Int64 != userID {
+				return nil, errors.New("forbidden: you do not own this log")
+			}
+		} else {
+			// Worker-created log — check whether the user owns the parent room.
+			isOwner, err := warmingModel.CheckRoomOwnership(log.RoomID.String(), userID)
+			if err != nil || !isOwner {
+				return nil, errors.New("forbidden: you do not own this log")
+			}
 		}
 	}
 
