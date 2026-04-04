@@ -64,15 +64,6 @@ func Login(c echo.Context) error {
 		return ErrorResponse(c, 403, "Viewers cannot create instances", "FORBIDDEN", "")
 	}
 
-	// Check instance creation limit for non-admin users
-	if userClaims != nil && userClaims.Role != "admin" {
-		maxInstances := helper.GetEnvAsInt("MAX_INSTANCES_PER_USER", 10)
-		instanceCount, err := model.CountUserInstances(userClaims.UserID)
-		if err == nil && instanceCount >= maxInstances {
-			return ErrorResponse(c, 429, "Instance creation limit reached", "INSTANCE_LIMIT", fmt.Sprintf("Maximum %d instances per user", maxInstances))
-		}
-	}
-
 	session, err := service.CreateSession(instanceID)
 	if err != nil {
 		return ErrorResponse(c, 400, "Failed to create session", "CREATE_SESSION_FAILED", err.Error())
@@ -93,13 +84,11 @@ func Login(c echo.Context) error {
 		})
 	}
 
-	ok := userClaims != nil
 	var createdBy sql.NullInt64
-	if ok && userClaims != nil {
+	if userClaims != nil {
 		createdBy = sql.NullInt64{Int64: userClaims.UserID, Valid: true}
 	}
 
-	// Insert into custom DB hermeswa
 	instance := &model.Instance{
 		InstanceID:  instanceID,
 		Status:      "qr_required",
@@ -108,16 +97,26 @@ func Login(c echo.Context) error {
 		Circle:      req.Circle,
 		CreatedBy:   createdBy,
 	}
-	err = model.InsertInstance(instance)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to insert instance", "DB_INSERT_FAILED", err.Error())
-	}
 
-	// Assign initial access if user is logged in
-	if createdBy.Valid {
-		err = model.AssignInstanceToUser(createdBy.Int64, instanceID, "access")
-		if err != nil {
-			log.Printf("⚠️ Warning: Failed to assign access for instance %s to user %d: %v", instanceID, createdBy.Int64, err)
+	// For non-admin users, atomically check the limit and create the instance.
+	// This prevents concurrent requests from bypassing the per-user instance cap.
+	if userClaims != nil && userClaims.Role != "admin" {
+		maxInstances := helper.GetEnvAsInt("MAX_INSTANCES_PER_USER", 10)
+		if err = model.CreateInstanceAtomic(instance, userClaims.UserID, maxInstances); err != nil {
+			if err == model.ErrInstanceLimitReached {
+				return ErrorResponse(c, 429, "Instance creation limit reached", "INSTANCE_LIMIT", fmt.Sprintf("Maximum %d instances per user", maxInstances))
+			}
+			return ErrorResponse(c, 500, "Failed to insert instance", "DB_INSERT_FAILED", err.Error())
+		}
+	} else {
+		// Admin has no instance cap — use the plain insert path.
+		if err = model.InsertInstance(instance); err != nil {
+			return ErrorResponse(c, 500, "Failed to insert instance", "DB_INSERT_FAILED", err.Error())
+		}
+		if createdBy.Valid {
+			if err = model.AssignInstanceToUser(createdBy.Int64, instanceID, "access"); err != nil {
+				log.Printf("⚠️ Warning: Failed to assign access for instance %s to user %d: %v", instanceID, createdBy.Int64, err)
+			}
 		}
 	}
 

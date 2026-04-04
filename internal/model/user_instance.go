@@ -2,6 +2,7 @@
 package model
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"time"
@@ -191,4 +192,57 @@ func CountUserInstances(userID int64) (int, error) {
 	var count int
 	err := db.QueryRow(query, userID).Scan(&count)
 	return count, err
+}
+
+// ErrInstanceLimitReached is returned when a user has reached their instance creation limit.
+var ErrInstanceLimitReached = errors.New("instance limit reached")
+
+// CreateInstanceAtomic inserts an instance and assigns it to a user within a single
+// transaction protected by a PostgreSQL advisory lock, preventing TOCTOU races on
+// the per-user instance count limit.
+func CreateInstanceAtomic(instance *Instance, userID int64, maxInstances int) error {
+	db := database.AppDB
+	ctx := context.Background()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Acquire a per-user advisory lock for the duration of this transaction.
+	// Concurrent requests for the same user serialize here.
+	if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", userID); err != nil {
+		return err
+	}
+
+	var count int
+	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM user_instances WHERE user_id = $1", userID).Scan(&count); err != nil {
+		return err
+	}
+	if count >= maxInstances {
+		return ErrInstanceLimitReached
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO instances (instance_id, status, is_connected, created_at, session_data, circle, used, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		instance.InstanceID, instance.Status, instance.IsConnected, instance.CreatedAt,
+		instance.SessionData, instance.Circle, true, instance.CreatedBy,
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO user_instances (user_id, instance_id, permission_level)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, instance_id) DO UPDATE SET permission_level = $3`,
+		userID, instance.InstanceID, "access",
+	)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
