@@ -237,11 +237,25 @@ func GetEnabledConfigs(ctx context.Context) ([]WorkerConfig, error) {
 	return configs, rows.Err()
 }
 
-// GetAvailableCircles retrieves distinct circles from instances table
-func GetAvailableCircles(ctx context.Context) ([]string, error) {
-	query := `SELECT DISTINCT circle FROM instances WHERE used = true AND circle IS NOT NULL AND circle != '' ORDER BY circle`
+// GetAvailableCircles retrieves distinct circles from instances the user has access to.
+// Admins see all circles; regular users see only their own instances.
+func GetAvailableCircles(ctx context.Context, userID int64, isAdmin bool) ([]string, error) {
+	var query string
+	var args []interface{}
 
-	rows, err := database.AppDB.QueryContext(ctx, query)
+	if isAdmin {
+		query = `SELECT DISTINCT circle FROM instances WHERE used = true AND circle IS NOT NULL AND circle != '' ORDER BY circle`
+	} else {
+		query = `
+			SELECT DISTINCT i.circle
+			FROM instances i
+			JOIN user_instances ui ON ui.instance_id = i.instance_id
+			WHERE ui.user_id = $1 AND i.used = true AND i.circle IS NOT NULL AND i.circle != ''
+			ORDER BY i.circle`
+		args = append(args, userID)
+	}
+
+	rows, err := database.AppDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -259,16 +273,28 @@ func GetAvailableCircles(ctx context.Context) ([]string, error) {
 	return circles, rows.Err()
 }
 
-// GetAvailableApplications retrieves distinct applications from outbox table
-func GetAvailableApplications(ctx context.Context) ([]string, error) {
-	query := `
-		SELECT DISTINCT application 
-		FROM outbox 
-		WHERE application IS NOT NULL AND application != ''
-		ORDER BY application
-	`
+// GetAvailableApplications retrieves distinct applications from the user's outbox messages.
+// Admins see all application names; regular users see only their own.
+func GetAvailableApplications(ctx context.Context, userID int64, isAdmin bool) ([]string, error) {
+	var query string
+	var args []interface{}
 
-	rows, err := database.OutboxDB.QueryContext(ctx, query)
+	if isAdmin {
+		query = `
+			SELECT DISTINCT application
+			FROM outbox
+			WHERE application IS NOT NULL AND application != ''
+			ORDER BY application`
+	} else {
+		query = `
+			SELECT DISTINCT application
+			FROM outbox
+			WHERE client_id = $1 AND application IS NOT NULL AND application != ''
+			ORDER BY application`
+		args = append(args, userID)
+	}
+
+	rows, err := database.OutboxDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

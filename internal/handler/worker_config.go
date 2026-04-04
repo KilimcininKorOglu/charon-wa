@@ -353,7 +353,14 @@ func ToggleWorkerConfig(c echo.Context) error {
 
 // GetAvailableCircles returns list of available circles from instances
 func GetAvailableCircles(c echo.Context) error {
-	circles, err := model.GetAvailableCircles(c.Request().Context())
+	claims := getClaims(c)
+	isAdmin := claims != nil && claims.Role == "admin"
+	userID := int64(0)
+	if claims != nil {
+		userID = claims.UserID
+	}
+
+	circles, err := model.GetAvailableCircles(c.Request().Context(), userID, isAdmin)
 	if err != nil {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve available circles", "INTERNAL_ERROR", err.Error())
 	}
@@ -363,7 +370,14 @@ func GetAvailableCircles(c echo.Context) error {
 
 // GetAvailableApplications returns list of available applications from outbox
 func GetAvailableApplications(c echo.Context) error {
-	applications, err := model.GetAvailableApplications(c.Request().Context())
+	claims := getClaims(c)
+	isAdmin := claims != nil && claims.Role == "admin"
+	userID := int64(0)
+	if claims != nil {
+		userID = claims.UserID
+	}
+
+	applications, err := model.GetAvailableApplications(c.Request().Context(), userID, isAdmin)
 	if err != nil {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve available applications", "INTERNAL_ERROR", err.Error())
 	}
