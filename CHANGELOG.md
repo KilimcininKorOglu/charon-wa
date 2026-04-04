@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.2.4] - 2026-04-04
+
+### Fixed
+- Set correct browser tab title (was showing "web" instead of "Hermes WA")
+
 ## [1.2.3] - 2026-04-04
 
 ### Added
