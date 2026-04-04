@@ -28,6 +28,7 @@ services:
       PORT: "2121"
       BASEURL: "0.0.0.0"
       CORS_ALLOW_ORIGINS: "http://localhost:3000,http://localhost:8080,http://localhost:5174"
+      PHONE_COUNTRY_CODE: "90"
       HERMESWA_ENABLE_WEBSOCKET_INCOMING_MSG: "false"
       HERMESWA_ENABLE_WEBHOOK: "false"
       HERMESWA_TYPING_DELAY_MIN: "1"

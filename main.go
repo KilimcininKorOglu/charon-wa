@@ -79,6 +79,9 @@ func main() {
 		config.TypingDelayMax = v
 	}
 
+	// Phone Number Configuration
+	config.PhoneCountryCode = strings.TrimSpace(os.Getenv("PHONE_COUNTRY_CODE"))
+
 	// AI Configuration
 	config.AIEnabled = os.Getenv("AI_ENABLED") == "true"
 	config.AIDefaultProvider = os.Getenv("AI_DEFAULT_PROVIDER")

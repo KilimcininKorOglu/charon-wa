@@ -7,51 +7,54 @@ import (
 	"strings"
 
 	"go.mau.fi/whatsmeow/types"
+
+	"hermeswa/config"
 )
 
-// FormatPhoneNumber converts phone number to WhatsApp JID format
+// FormatPhoneNumber converts a phone number string to a WhatsApp JID.
+//
+// If PHONE_COUNTRY_CODE is set (e.g. "90" for Turkey, "62" for Indonesia):
+//   - "0XXXXXXXXXX"  → "{cc}XXXXXXXXXX"  (strip leading 0, prepend country code)
+//   - "XXXXXXXXXX"   → "{cc}XXXXXXXXXX"  (no cc prefix detected, prepend country code)
+//   - "{cc}XXXXXXXX" → used as-is
+//
+// If PHONE_COUNTRY_CODE is empty, the number must already be in full international
+// format (E.164 without the +, e.g. "905551234567").
+//
+// Final length must be 7–15 digits per ITU-T E.164.
 func FormatPhoneNumber(phone string) (types.JID, error) {
-	// REGEX: Only accept digits, +, -, (, ), and spaces
+	// Only accept digits, +, -, (, ), and spaces
 	validFormat := regexp.MustCompile(`^[\d\s\+\-\(\)]+$`)
 	if !validFormat.MatchString(phone) {
 		return types.JID{}, fmt.Errorf("invalid phone number format: contains invalid characters")
 	}
 
-	// Remove all characters except digits
+	// Strip everything except digits
 	cleaned := regexp.MustCompile(`[^\d]`).ReplaceAllString(phone, "")
 
-	// Validate minimal input
-	if len(cleaned) < 9 {
+	if len(cleaned) < 7 {
 		return types.JID{}, fmt.Errorf("phone number too short")
 	}
 
-	// Auto-convert 0xxx → 62xxx
-	if strings.HasPrefix(cleaned, "0") {
-		cleaned = "62" + cleaned[1:]
-	}
+	cc := config.PhoneCountryCode
 
-	// Auto-convert 8xxx → 62xxx (number without leading 0)
-	if len(cleaned) >= 9 && strings.HasPrefix(cleaned, "8") && !strings.HasPrefix(cleaned, "62") {
-		cleaned = "62" + cleaned
-	}
-
-	// 🔥 ENFORCE: Must start with 62
-	if !strings.HasPrefix(cleaned, "62") {
-		return types.JID{}, fmt.Errorf("phone number must start with 62 (Indonesia). Example: 628123456789")
-	}
-
-	// Validate length (62 + 9-12 digit Indonesian number)
-	if len(cleaned) < 11 || len(cleaned) > 15 {
-		return types.JID{}, fmt.Errorf("invalid phone number length")
-	}
-
-	// ADDITIONAL VALIDATION: Check if 2nd and 3rd digits are valid for Indonesia
-	// Indonesia: 628xxx (valid operators: 08xx)
-	if len(cleaned) >= 3 {
-		thirdDigit := cleaned[2]
-		if thirdDigit != '8' && thirdDigit != '1' && thirdDigit != '2' && thirdDigit != '5' && thirdDigit != '9' {
-			return types.JID{}, fmt.Errorf("invalid Indonesian phone number format")
+	if cc != "" {
+		// Auto-convert: "0XXXXXXXXX" → "{cc}XXXXXXXXX"
+		if strings.HasPrefix(cleaned, "0") {
+			cleaned = cc + cleaned[1:]
+		} else if !strings.HasPrefix(cleaned, cc) {
+			// Local format without leading 0 and without country code → prepend cc
+			cleaned = cc + cleaned
 		}
+
+		if !strings.HasPrefix(cleaned, cc) {
+			return types.JID{}, fmt.Errorf("phone number must start with %s (country code). Example: %sXXXXXXXXXX", cc, cc)
+		}
+	}
+
+	// E.164 length: 7–15 digits (country code included)
+	if len(cleaned) < 7 || len(cleaned) > 15 {
+		return types.JID{}, fmt.Errorf("invalid phone number length (must be 7–15 digits in E.164 format)")
 	}
 
 	return types.JID{
@@ -60,35 +63,44 @@ func FormatPhoneNumber(phone string) (types.JID, error) {
 	}, nil
 }
 
-// ShouldSkipValidation checks if the phone number should skip IsOnWhatsApp validation
+// ShouldSkipValidation reports whether the IsOnWhatsApp registration check should
+// be skipped for this phone number. Skipping is only possible when the
+// ALLOW_9_DIGIT_PHONE_NUMBER environment variable is set to "true".
+//
+// Numbers that trigger skipping:
+//   - Numbers with a leading 0 (local format, may not resolve correctly)
+//   - Numbers that don't start with the configured country code (local format without cc)
+//   - Numbers shorter than 10 digits
 func ShouldSkipValidation(phone string) bool {
-	allow9Digit := os.Getenv("ALLOW_9_DIGIT_PHONE_NUMBER") == "true"
-	if !allow9Digit {
+	if os.Getenv("ALLOW_9_DIGIT_PHONE_NUMBER") != "true" {
 		return false
 	}
 
 	cleaned := regexp.MustCompile(`[^\d]`).ReplaceAllString(phone, "")
 
-	// 9 digits: 818280277
-	if len(cleaned) == 9 {
+	// Local format with leading 0
+	if strings.HasPrefix(cleaned, "0") {
 		return true
 	}
 
-	// 10 digits with 0: 0818280277
-	if len(cleaned) == 10 && strings.HasPrefix(cleaned, "0") {
+	// Local format without country code prefix
+	cc := config.PhoneCountryCode
+	if cc != "" && !strings.HasPrefix(cleaned, cc) {
 		return true
 	}
 
-	// 11 digits with 62: 62818280277
-	if len(cleaned) == 11 && strings.HasPrefix(cleaned, "62") {
+	// Genuinely short number
+	if len(cleaned) < 10 {
 		return true
 	}
 
 	return false
 }
 
+// ExtractPhoneFromJID extracts the phone number from a WhatsApp JID string.
+// "6285148107612:43@s.whatsapp.net" → "6285148107612"
+// "905551234567@s.whatsapp.net"     → "905551234567"
 func ExtractPhoneFromJID(jid string) string {
-	// "6285148107612:43@s.whatsapp.net" -> "6285148107612"
 	atSplit := strings.SplitN(jid, "@", 2)
 	if len(atSplit) == 0 {
 		return jid

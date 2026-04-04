@@ -10,6 +10,9 @@ var WarmingAutoReplyCooldown int // seconds
 var TypingDelayMin int // 0 = disabled (use calculated delay)
 var TypingDelayMax int
 
+// Phone Number Configuration
+var PhoneCountryCode string // e.g. "90" for Turkey, "62" for Indonesia, "" = no restriction (E.164 required)
+
 // AI Configuration
 var AIEnabled bool
 var AIDefaultProvider string
