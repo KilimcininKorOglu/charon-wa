@@ -141,7 +141,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 | Database  | PostgreSQL 12+                                            |
 | WebSocket | [Gorilla WebSocket](https://github.com/gorilla/websocket) |
 | AI        | Google Gemini API                                         |
-| Frontend  | React 19 + Vite + TypeScript + TailwindCSS v4             |
+| Frontend  | React 19 + Vite 8 + TypeScript + TailwindCSS v4 + Zustand v5 |
 | Container | Docker / Docker Compose                                   |
 
 ---
@@ -196,6 +196,14 @@ On first startup, if no admin user exists in the database, HERMESWA automaticall
 ## Authentication
 
 HERMESWA uses JWT-based authentication with access/refresh token pairs. API keys are available for external integrations.
+
+### Roles
+
+| Role     | Description                                                              |
+|:---------|:-------------------------------------------------------------------------|
+| `admin`  | Full access to all resources and admin endpoints                         |
+| `user`   | Standard access, scoped to assigned instances                            |
+| `viewer` | Read-only access, blocked from all write operations on instances/phones  |
 
 ### JWT Flow
 
@@ -280,8 +288,6 @@ docker compose -f docker-compose.local.yml down
 
 All volumes bind-mount to `docker-data/` directory. The API server uses `air` for hot-reload during development.
 
-An admin user (`admin` / `admin123`) is automatically created on first startup if no admin exists in the database.
-
 ### Production (Coolify)
 
 ```bash
@@ -302,7 +308,7 @@ An admin user (`admin` / `admin123`) is automatically created on first startup i
 
 ## Web UI
 
-A cyberpunk-themed dark web interface built with React 19, Vite, TypeScript, and TailwindCSS v4.
+A cyberpunk-themed dark web interface built with React 19, Vite 8, TypeScript, TailwindCSS v4, Zustand v5, Lucide React, and React Hot Toast.
 
 ### Pages
 
@@ -345,7 +351,7 @@ Configure these in your `.env` file.
 | `OUTBOX_DATABASE_URL` | PostgreSQL URL for outbox (optional)         | --      | `postgres://user:pass@localhost:5432/outbox` |
 | `JWT_SECRET`          | Secret key for JWT authentication (min 32 chars) | --  | `your-very-long-secret-key-here-32chars`     |
 | `PORT`                | Server listening port                        | `2121`  | `3000`                                       |
-| `BASEURL`             | Base URL/Host of the server                  | --      | `127.0.0.1`                                  |
+| `BASEURL`             | Public host/IP of the server (without protocol) | --   | `127.0.0.1`                                  |
 | `CORS_ALLOW_ORIGINS`  | Allowed origins for CORS (required)          | --      | `http://localhost:3000`                      |
 
 ### Features
@@ -357,7 +363,7 @@ Configure these in your `.env` file.
 | `HERMESWA_TYPING_DELAY_MIN`              | Minimum typing simulation delay (seconds)   | `1`     | `2`     |
 | `HERMESWA_TYPING_DELAY_MAX`              | Maximum typing simulation delay (seconds)   | `3`     | `5`     |
 | `PHONE_COUNTRY_CODE`                     | Country code for phone number formatting    | --      | `90`    |
-| `ALLOW_9_DIGIT_PHONE_NUMBER`             | Allow 9-digit numbers without validation    | `false` | `true`  |
+| `ALLOW_9_DIGIT_PHONE_NUMBER`             | Skip IsOnWhatsApp check for leading-0, no-cc-prefix, or <10 digit numbers | `false` | `true`  |
 
 ### JWT Token Configuration
 
