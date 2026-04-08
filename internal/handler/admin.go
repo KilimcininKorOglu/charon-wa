@@ -157,19 +157,11 @@ func DeleteUser(c echo.Context) error {
 		return ErrorResponse(c, http.StatusBadRequest, "Cannot delete your own account", "SELF_DELETE", "")
 	}
 
-	// Prevent deleting the last admin
-	targetUser, err := model.GetUserByID(userID)
-	if err != nil {
-		return ErrorResponse(c, http.StatusNotFound, "User not found", "NOT_FOUND", "")
-	}
-	if targetUser.Role == "admin" {
-		adminCount, err := model.CountAdminUsers()
-		if err == nil && adminCount <= 1 {
+	// Atomic delete with last-admin protection (prevents TOCTOU race)
+	if err := model.AdminDeleteUserAtomic(userID); err != nil {
+		if err.Error() == "cannot delete the last admin user" {
 			return ErrorResponse(c, http.StatusBadRequest, "Cannot delete the last admin user", "LAST_ADMIN", "")
 		}
-	}
-
-	if err := model.AdminDeleteUser(userID); err != nil {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to delete user", "DB_ERROR", err.Error())
 	}
 

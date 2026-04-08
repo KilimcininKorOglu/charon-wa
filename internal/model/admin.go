@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 
 	"charon/database"
@@ -171,6 +172,44 @@ func AdminDeleteUser(userID int64) error {
 	db := database.AppDB
 	_, err := db.Exec(`DELETE FROM users WHERE id = $1`, userID)
 	return err
+}
+
+// AdminDeleteUserAtomic deletes a user within a transaction, checking that
+// at least one admin remains if the target is an admin. This prevents the
+// TOCTOU race where two admins delete each other simultaneously.
+func AdminDeleteUserAtomic(userID int64) error {
+	db := database.AppDB
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Lock the target user row
+	var role string
+	err = tx.QueryRow(`SELECT role FROM users WHERE id = $1 FOR UPDATE`, userID).Scan(&role)
+	if err != nil {
+		return err
+	}
+
+	if role == "admin" {
+		var adminCount int
+		err = tx.QueryRow(`SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = true`).Scan(&adminCount)
+		if err != nil {
+			return err
+		}
+		if adminCount <= 1 {
+			return errors.New("cannot delete the last admin user")
+		}
+	}
+
+	_, err = tx.Exec(`DELETE FROM users WHERE id = $1`, userID)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 // GetUserInstanceDetails retrieves instance assignments for a user
