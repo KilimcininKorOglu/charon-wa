@@ -117,6 +117,23 @@ func UpdateUser(c echo.Context) error {
 		if !validRoles[*req.Role] {
 			return ErrorResponse(c, http.StatusBadRequest, "Invalid role", "INVALID_ROLE", "Valid roles: admin, user, viewer")
 		}
+
+		// Prevent admin self-demotion (could lock out all admin access)
+		claims := getClaims(c)
+		if claims != nil && claims.UserID == userID && *req.Role != "admin" {
+			return ErrorResponse(c, http.StatusBadRequest, "Cannot demote your own admin account", "SELF_DEMOTE", "")
+		}
+
+		// Prevent demoting the last admin
+		if *req.Role != "admin" {
+			targetUser, err := model.GetUserByID(userID)
+			if err == nil && targetUser.Role == "admin" {
+				adminCount, err := model.CountAdminUsers()
+				if err == nil && adminCount <= 1 {
+					return ErrorResponse(c, http.StatusBadRequest, "Cannot demote the last admin user", "LAST_ADMIN", "")
+				}
+			}
+		}
 	}
 
 	user, err := model.AdminUpdateUser(userID, req)
