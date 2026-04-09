@@ -146,12 +146,12 @@ func executeRoom(room warmingModel.WarmingRoom, hub ws.RealtimePublisher) error 
 
 func sendWhatsAppMessage(senderID, receiverID, message string, sendReal bool) (bool, string) {
 	if !sendReal {
-		log.Printf("🧪 [SIMULATION] %s → %s: %s", senderID, receiverID, message)
+		log.Printf("🧪 [SIMULATION] %s → %s: [%d chars]", senderID, receiverID, len(message))
 		time.Sleep(100 * time.Millisecond)
 		return true, ""
 	}
 
-	log.Printf("📤 [REAL] Sending: %s → %s: %s", senderID, receiverID, message)
+	log.Printf("📤 [REAL] Sending: %s → %s: [%d chars]", senderID, receiverID, len(message))
 
 	success, errMsg := service.SendWarmingMessage(senderID, receiverID, message)
 
