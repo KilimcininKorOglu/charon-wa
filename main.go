@@ -167,6 +167,12 @@ func main() {
 	e := echo.New()
 	// e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
+		XFrameOptions:         "DENY",
+		ContentSecurityPolicy: "frame-ancestors 'none'",
+		ContentTypeNosniff:    "nosniff",
+		HSTSMaxAge:            31536000,
+	}))
 
 	// CORS allowed origins
 	originsEnv := os.Getenv("CORS_ALLOW_ORIGINS")
