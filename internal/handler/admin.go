@@ -141,6 +141,11 @@ func UpdateUser(c echo.Context) error {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to update user", "DB_ERROR", err.Error())
 	}
 
+	// Revoke sessions when user is deactivated or role changes
+	if (req.IsActive != nil && !*req.IsActive) || req.Role != nil {
+		_ = service.DestroyAllUserSessions(userID)
+	}
+
 	return SuccessResponse(c, http.StatusOK, "User updated", user.ToResponse())
 }
 

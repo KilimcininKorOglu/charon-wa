@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
-	"strings"
-	"time"
 
 	"charon/internal/helper"
 	"charon/internal/model"
@@ -29,16 +27,9 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-// RefreshTokenRequest represents the refresh token request payload
-type RefreshTokenRequest struct {
-	RefreshToken string `json:"refresh_token"`
-}
-
-// AuthResponse represents the authentication response with tokens
+// AuthResponse represents the authentication response
 type AuthResponse struct {
-	AccessToken  string             `json:"access_token"`
-	RefreshToken string             `json:"refresh_token"`
-	User         model.UserResponse `json:"user"`
+	User model.UserResponse `json:"user"`
 }
 
 // Register handles user registration
@@ -68,18 +59,14 @@ func Register(c echo.Context) error {
 		return ErrorResponse(c, http.StatusBadRequest, err.Error(), "REGISTRATION_FAILED", "")
 	}
 
-	// Generate tokens
-	accessToken, err := service.GenerateAccessToken(user)
-	if err != nil {
-		return ErrorResponse(c, http.StatusInternalServerError, "Failed to generate access token", "TOKEN_GENERATION_FAILED", err.Error())
-	}
-
+	// Create session
 	ipAddress := c.RealIP()
 	userAgent := c.Request().UserAgent()
-	refreshToken, err := service.GenerateRefreshTokenForUser(user, ipAddress, userAgent)
+	rawToken, err := service.CreateUserSession(user, ipAddress, userAgent)
 	if err != nil {
-		return ErrorResponse(c, http.StatusInternalServerError, "Failed to generate refresh token", "TOKEN_GENERATION_FAILED", err.Error())
+		return ErrorResponse(c, http.StatusInternalServerError, "Failed to create session", "SESSION_CREATION_FAILED", err.Error())
 	}
+	setSessionCookie(c, rawToken, service.GetSessionExpiry())
 
 	auditLog := &model.AuditLog{
 		UserID:       sql.NullInt64{Int64: user.ID, Valid: true},
@@ -92,16 +79,13 @@ func Register(c echo.Context) error {
 
 	err = model.LogAction(auditLog)
 	if err != nil {
-		// Log error tapi jangan fail request
 		log.Printf("❌ ERROR: Failed to log audit: %v", err)
 	} else {
 		log.Printf("✅ SUCCESS: Audit log saved successfully")
 	}
 
 	return SuccessResponse(c, http.StatusCreated, "User registered successfully", AuthResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		User:         user.ToResponse(),
+		User: user.ToResponse(),
 	})
 }
 
@@ -143,18 +127,14 @@ func LoginUser(c echo.Context) error {
 	// Reset failed login counter on successful login
 	_ = model.ResetFailedLogin(int(user.ID))
 
-	// Generate tokens
-	accessToken, err := service.GenerateAccessToken(user)
-	if err != nil {
-		return ErrorResponse(c, http.StatusInternalServerError, "Failed to generate access token", "TOKEN_GENERATION_FAILED", err.Error())
-	}
-
+	// Create session
 	ipAddress := c.RealIP()
 	userAgent := c.Request().UserAgent()
-	refreshToken, err := service.GenerateRefreshTokenForUser(user, ipAddress, userAgent)
+	rawToken, err := service.CreateUserSession(user, ipAddress, userAgent)
 	if err != nil {
-		return ErrorResponse(c, http.StatusInternalServerError, "Failed to generate refresh token", "TOKEN_GENERATION_FAILED", err.Error())
+		return ErrorResponse(c, http.StatusInternalServerError, "Failed to create session", "SESSION_CREATION_FAILED", err.Error())
 	}
+	setSessionCookie(c, rawToken, service.GetSessionExpiry())
 
 	// Log login
 	err = model.LogAction(&model.AuditLog{
@@ -170,82 +150,31 @@ func LoginUser(c echo.Context) error {
 	}
 
 	return SuccessResponse(c, http.StatusOK, "Login successful", AuthResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		User:         user.ToResponse(),
+		User: user.ToResponse(),
 	})
 }
 
-// RefreshToken handles refresh token to get new access token
+// RefreshToken is a deprecated stub kept for compile compatibility until Phase 3
+// removes the route from main.go. Session-based auth does not use refresh tokens.
 // POST /refresh
 func RefreshToken(c echo.Context) error {
-	var req RefreshTokenRequest
-	if err := c.Bind(&req); err != nil {
-		return ErrorResponse(c, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST", err.Error())
-	}
-
-	if req.RefreshToken == "" {
-		return ErrorResponse(c, http.StatusBadRequest, "Refresh token is required", "MISSING_TOKEN", "")
-	}
-
-	// Validate refresh token and generate new access token
-	accessToken, newRefreshToken, user, err := service.RefreshAccessToken(req.RefreshToken)
-	if err != nil {
-		if err == model.ErrTokenNotFound || err == model.ErrTokenExpired || err == model.ErrTokenRevoked {
-			return ErrorResponse(c, http.StatusUnauthorized, "Invalid or expired refresh token", "INVALID_REFRESH_TOKEN", err.Error())
-		}
-		return ErrorResponse(c, http.StatusInternalServerError, "Failed to refresh token", "REFRESH_FAILED", err.Error())
-	}
-
-	return SuccessResponse(c, http.StatusOK, "Token refreshed successfully", map[string]interface{}{
-		"access_token":  accessToken,
-		"refresh_token": newRefreshToken,
-		"user":          user.ToResponse(),
-	})
+	return ErrorResponse(c, http.StatusGone, "Refresh tokens are no longer supported. Use session-based auth.", "DEPRECATED", "")
 }
 
-// LogoutUser handles user logout by revoking refresh token
+// LogoutUser handles user logout by destroying the session
 // POST /api/logout
 func LogoutUser(c echo.Context) error {
-	var req RefreshTokenRequest
-	if err := c.Bind(&req); err != nil {
-		return ErrorResponse(c, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST", err.Error())
-	}
-
-	if req.RefreshToken == "" {
-		return ErrorResponse(c, http.StatusBadRequest, "Refresh token is required", "MISSING_TOKEN", "")
-	}
-
-	// Get user from context
+	// Get user from context for audit logging
 	userClaims, _ := c.Get("user_claims").(*service.Claims)
 
-	// Blacklist current access token (immediate logout)
-	if userClaims != nil {
-		authHeader := c.Request().Header.Get("Authorization")
-		if authHeader != "" {
-			parts := strings.Split(authHeader, " ")
-			if len(parts) == 2 {
-				accessToken := parts[1]
-				// Blacklist with expiry = token's original expiry
-				expiresAt := time.Unix(userClaims.ExpiresAt.Unix(), 0)
-				err := model.BlacklistToken(accessToken, userClaims.UserID, "logout", expiresAt)
-				if err != nil {
-					log.Printf("⚠️ Failed to blacklist token: %v", err)
-				} else {
-					log.Printf("✅ Access token blacklisted for user ID: %d", userClaims.UserID)
-				}
-			}
+	// Read session cookie and destroy session
+	cookie, err := c.Cookie("session")
+	if err == nil && cookie.Value != "" {
+		if destroyErr := service.DestroySession(cookie.Value); destroyErr != nil {
+			log.Printf("⚠️ Failed to destroy session: %v", destroyErr)
 		}
 	}
-
-	// Revoke refresh token
-	err := service.RevokeUserSession(req.RefreshToken)
-	if err != nil {
-		// Don't fail if token not found (already logged out)
-		if err != model.ErrTokenNotFound {
-			return ErrorResponse(c, http.StatusInternalServerError, "Failed to logout", "LOGOUT_FAILED", err.Error())
-		}
-	}
+	clearSessionCookie(c)
 
 	// Log logout
 	if userClaims != nil {
@@ -376,29 +305,14 @@ func ChangePassword(c echo.Context) error {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to update password", "UPDATE_FAILED", err.Error())
 	}
 
-	// Blacklist current access token (immediate logout)
-	authHeader := c.Request().Header.Get("Authorization")
-	if authHeader != "" {
-		parts := strings.Split(authHeader, " ")
-		if len(parts) == 2 {
-			accessToken := parts[1]
-			expiresAt := time.Unix(userClaims.ExpiresAt.Unix(), 0)
-			err := model.BlacklistToken(accessToken, userClaims.UserID, "password_change", expiresAt)
-			if err != nil {
-				log.Printf("⚠️ Failed to blacklist token: %v", err)
-			} else {
-				log.Printf("✅ Access token blacklisted after password change for user ID: %d", userClaims.UserID)
-			}
-		}
-	}
-
-	// Revoke all existing refresh tokens for security
-	err = service.RevokeAllUserSessions(user.ID)
+	// Destroy all sessions for security
+	err = service.DestroyAllUserSessions(user.ID)
 	if err != nil {
-		log.Printf("❌ ERROR: Failed to revoke sessions: %v", err)
+		log.Printf("❌ ERROR: Failed to destroy sessions: %v", err)
 	} else {
-		log.Printf("✅ SUCCESS: All sessions revoked for user ID: %d", user.ID)
+		log.Printf("✅ SUCCESS: All sessions destroyed for user ID: %d", user.ID)
 	}
+	clearSessionCookie(c)
 
 	// Log password change
 	err = model.LogAction(&model.AuditLog{
