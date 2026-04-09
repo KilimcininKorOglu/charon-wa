@@ -1,4 +1,5 @@
 import type { WsEvent } from "./types"
+import api from "./api"
 
 type WsHandler = (event: WsEvent) => void
 
@@ -13,14 +14,20 @@ class WebSocketClient {
     this.url = `${proto}//${window.location.host}${path}`
   }
 
-  connect() {
+  async connect() {
     if (this.ws?.readyState === WebSocket.OPEN) return
 
-    const token = localStorage.getItem("access_token")
-    if (!token) return
-
-    const separator = this.url.includes("?") ? "&" : "?"
-    this.ws = new WebSocket(`${this.url}${separator}token=${token}`)
+    // Get one-time ticket for WS auth
+    try {
+      const res = await api.post("/api/ws/ticket")
+      const ticket = res.data.data.ticket
+      const separator = this.url.includes("?") ? "&" : "?"
+      this.ws = new WebSocket(`${this.url}${separator}ticket=${ticket}`)
+    } catch (err) {
+      console.error("Failed to get WS ticket:", err)
+      this.scheduleReconnect()
+      return
+    }
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0

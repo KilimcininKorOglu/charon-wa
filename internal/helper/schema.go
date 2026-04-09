@@ -476,6 +476,28 @@ func InitCustomSchema() {
 
 	log.Println("✅ User management schema created successfully")
 
+	// =====================================================
+	// WS TICKETS TABLE (one-time WebSocket auth tickets)
+	// =====================================================
+	wsTicketsSchema := `
+		CREATE TABLE IF NOT EXISTS ws_tickets (
+			id SERIAL PRIMARY KEY,
+			ticket VARCHAR(64) UNIQUE NOT NULL,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			role VARCHAR(20) NOT NULL,
+			expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+			used BOOLEAN DEFAULT false,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		);
+		CREATE INDEX IF NOT EXISTS idx_ws_tickets_ticket ON ws_tickets(ticket);
+		CREATE INDEX IF NOT EXISTS idx_ws_tickets_expires_at ON ws_tickets(expires_at);
+	`
+	if _, err := db.Exec(wsTicketsSchema); err != nil {
+		log.Printf("⚠️ Warning: Could not create ws_tickets table: %v", err)
+	} else {
+		log.Println("✅ WebSocket tickets table created successfully")
+	}
+
 	// Add created_by columns to warming tables for RBAC (NOW users table exists)
 	_, err = db.Exec(`
 		-- Add created_by to warming_scripts

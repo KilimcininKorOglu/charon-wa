@@ -315,6 +315,9 @@ func main() {
 		c.JSON(code, response)
 	}
 
+	// WebSocket ticket exchange (JWT required to obtain ticket)
+	api.POST("/ws/ticket", handler.CreateWSTicket)
+
 	// =====================================================
 	// USER PROFILE ROUTES (JWT required)
 	// =====================================================

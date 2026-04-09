@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"charon/internal/model"
-	"charon/internal/service"
 	"charon/internal/ws"
 
 	"github.com/gorilla/websocket"
@@ -36,39 +35,43 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// WebSocketHandler handles WS connections on the /ws route with JWT auth
+// CreateWSTicket issues a one-time WebSocket connection ticket
+// POST /api/ws/ticket
+func CreateWSTicket(c echo.Context) error {
+	userID, ok := c.Get("user_id").(int)
+	if !ok {
+		return ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
+	}
+	role, _ := c.Get("role").(string)
+
+	ticket, err := model.CreateWSTicket(int64(userID), role)
+	if err != nil {
+		return ErrorResponse(c, http.StatusInternalServerError, "Failed to create ticket", "TICKET_FAILED", err.Error())
+	}
+
+	return SuccessResponse(c, http.StatusOK, "Ticket created", map[string]string{
+		"ticket": ticket,
+	})
+}
+
+// WebSocketHandler handles WS connections on the /ws route with ticket auth
 func WebSocketHandler(hub *ws.Hub) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		// Require JWT token via query parameter
-		token := c.QueryParam("token")
-		if token == "" {
+		// Require one-time ticket via query parameter
+		ticket := c.QueryParam("ticket")
+		if ticket == "" {
 			return c.JSON(http.StatusUnauthorized, map[string]interface{}{
 				"success": false,
-				"message": "Authentication required. Provide token as query parameter.",
+				"message": "Authentication required. Provide ticket as query parameter.",
 			})
 		}
 
-		claims, err := service.ValidateAccessToken(token)
+		// Consume ticket atomically (single-use)
+		userID, role, err := model.ConsumeWSTicket(ticket)
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]interface{}{
 				"success": false,
-				"message": "Invalid or expired token",
-			})
-		}
-
-		// Check token blacklist (logout, password change)
-		if blacklisted, _ := model.IsTokenBlacklisted(token); blacklisted {
-			return c.JSON(http.StatusUnauthorized, map[string]interface{}{
-				"success": false,
-				"message": "Token has been revoked",
-			})
-		}
-
-		// Check user-wide invalidation (account disabled)
-		if blacklisted, _ := model.IsUserBlacklisted(claims.UserID); blacklisted {
-			return c.JSON(http.StatusUnauthorized, map[string]interface{}{
-				"success": false,
-				"message": "Account has been disabled",
+				"message": "Invalid or expired ticket",
 			})
 		}
 
@@ -78,7 +81,7 @@ func WebSocketHandler(hub *ws.Hub) echo.HandlerFunc {
 			return err
 		}
 
-		client := ws.NewClient(hub, conn, int(claims.UserID), claims.Role == "admin")
+		client := ws.NewClient(hub, conn, int(userID), role == "admin")
 		hub.Register(client)
 
 		go client.WritePump()

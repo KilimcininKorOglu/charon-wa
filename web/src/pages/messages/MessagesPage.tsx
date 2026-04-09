@@ -127,31 +127,44 @@ export function MessagesPage() {
   // WebSocket for incoming messages (instance mode only)
   useEffect(() => {
     if (!selectedInstance || sendMode !== "instance") return
-    const token = localStorage.getItem("access_token")
-    const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
-    const wsUrl = `${proto}//${window.location.host}/api/listen/${selectedInstance}?token=${token}`
-    const ws = new WebSocket(wsUrl)
-    wsRef.current = ws
-    ws.onopen = () => setWsConnected(true)
-    ws.onclose = () => setWsConnected(false)
-    ws.onerror = () => setWsConnected(false)
-    ws.onmessage = (event) => {
+    let cancelled = false
+    let wsInstance: WebSocket | null = null
+
+    const connectWs = async () => {
       try {
-        const wsEvent: WsEvent = JSON.parse(event.data)
-        if (wsEvent.event === "incoming_message") {
-          const data = wsEvent.data as Record<string, unknown>
-          setMessages((prev) => [...prev, {
-            id: (data.message_id as string) || crypto.randomUUID(),
-            from: data.from as string,
-            message: data.message as string,
-            fromMe: data.from_me as boolean,
-            timestamp: data.timestamp as number,
-            pushName: data.push_name as string,
-          }])
+        const ticketRes = await api.post("/api/ws/ticket")
+        const ticket = ticketRes.data.data.ticket
+        if (cancelled) return
+        const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
+        const wsUrl = `${proto}//${window.location.host}/api/listen/${selectedInstance}?ticket=${ticket}`
+        wsInstance = new WebSocket(wsUrl)
+        wsRef.current = wsInstance
+        wsInstance.onopen = () => setWsConnected(true)
+        wsInstance.onclose = () => setWsConnected(false)
+        wsInstance.onerror = () => setWsConnected(false)
+        wsInstance.onmessage = (event) => {
+          try {
+            const wsEvent: WsEvent = JSON.parse(event.data)
+            if (wsEvent.event === "incoming_message") {
+              const data = wsEvent.data as Record<string, unknown>
+              setMessages((prev) => [...prev, {
+                id: (data.message_id as string) || crypto.randomUUID(),
+                from: data.from as string,
+                message: data.message as string,
+                fromMe: data.from_me as boolean,
+                timestamp: data.timestamp as number,
+                pushName: data.push_name as string,
+              }])
+            }
+          } catch { /* ignore */ }
         }
-      } catch { /* ignore */ }
+      } catch (err) {
+        console.error("Failed to get WS ticket:", err)
+      }
     }
-    return () => { ws.close(); wsRef.current = null; setWsConnected(false) }
+
+    connectWs()
+    return () => { cancelled = true; wsInstance?.close(); wsRef.current = null; setWsConnected(false) }
   }, [selectedInstance, sendMode])
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
