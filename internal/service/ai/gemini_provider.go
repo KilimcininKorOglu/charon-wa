@@ -3,7 +3,6 @@ package ai
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 
 	"charon/config"
@@ -99,11 +98,6 @@ func GenerateReply(systemPrompt string, conversationHistory []ConversationMessag
 		return "", fmt.Errorf("nil content in candidate")
 	}
 
-	// Log finish reason for debugging
-	if candidate.FinishReason != "" {
-		log.Printf("[AI DEBUG] Gemini FinishReason: %v", candidate.FinishReason)
-	}
-
 	// Extract text from parts
 	var textParts []string
 	for _, part := range candidate.Content.Parts {
@@ -121,9 +115,6 @@ func GenerateReply(systemPrompt string, conversationHistory []ConversationMessag
 	if candidate.FinishReason == "MAX_TOKENS" {
 		responseText += "\n\n_[Response truncated due to reaching maximum token limit. For a more complete answer, please ask a more specific question or contact admin to increase the token limit.]_"
 	}
-
-	// Log full response for debugging
-	log.Printf("[AI DEBUG] Full response (%d chars): %s", len(responseText), responseText)
 
 	return strings.TrimSpace(responseText), nil
 }
