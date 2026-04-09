@@ -20,7 +20,7 @@ type WorkerConfig struct {
 	Enabled            bool           `json:"enabled"`
 	AllowMedia         bool           `json:"allow_media"`
 	WebhookURL         sql.NullString `json:"webhook_url"`
-	WebhookSecret      sql.NullString `json:"webhook_secret"`
+	WebhookSecret      sql.NullString `json:"-"`
 	CreatedAt          time.Time      `json:"created_at"`
 	UpdatedAt          time.Time      `json:"updated_at"`
 }
