@@ -524,6 +524,18 @@ func InitCustomSchema() {
 		log.Println("✅ Unique constraint added: One whitelisted number per active HUMAN_VS_BOT room")
 	}
 
+	// Add failed login tracking columns to users table
+	_, err = db.Exec(`
+		ALTER TABLE users
+		ADD COLUMN IF NOT EXISTS failed_login_count INTEGER NOT NULL DEFAULT 0;
+
+		ALTER TABLE users
+		ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP WITH TIME ZONE;
+	`)
+	if err != nil {
+		log.Printf("⚠️ Warning: Could not add login lockout columns to users: %v", err)
+	}
+
 	log.Println("✅ User management schema created successfully")
 
 	// =====================================================

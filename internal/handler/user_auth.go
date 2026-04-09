@@ -118,14 +118,30 @@ func LoginUser(c echo.Context) error {
 		return ErrorResponse(c, http.StatusBadRequest, "Username and password are required", "MISSING_FIELDS", "")
 	}
 
+	// Check account lockout before authentication
+	userID, lookupErr := model.GetUserIDByUsername(req.Username)
+	if lookupErr == nil {
+		locked, _ := model.IsAccountLocked(userID)
+		if locked {
+			return ErrorResponse(c, http.StatusTooManyRequests, "Account temporarily locked due to too many failed login attempts. Try again later.", "ACCOUNT_LOCKED", "")
+		}
+	}
+
 	// Authenticate user
 	user, err := service.AuthenticateUser(req.Username, req.Password)
 	if err != nil {
 		if err == model.ErrInvalidCredentials {
+			// Track failed login attempt
+			if lookupErr == nil {
+				_ = model.IncrementFailedLogin(userID)
+			}
 			return ErrorResponse(c, http.StatusUnauthorized, "Invalid username or password", "INVALID_CREDENTIALS", "")
 		}
 		return ErrorResponse(c, http.StatusBadRequest, err.Error(), "AUTHENTICATION_FAILED", "")
 	}
+
+	// Reset failed login counter on successful login
+	_ = model.ResetFailedLogin(int(user.ID))
 
 	// Generate tokens
 	accessToken, err := service.GenerateAccessToken(user)

@@ -456,3 +456,43 @@ func CountAdminUsers() (int, error) {
 	err := db.QueryRow(query).Scan(&count)
 	return count, err
 }
+
+// IncrementFailedLogin increments the failed login counter for a user
+func IncrementFailedLogin(userID int) error {
+	db := database.AppDB
+	_, err := db.Exec(`
+		UPDATE users
+		SET failed_login_count = failed_login_count + 1,
+		    locked_until = CASE
+		        WHEN failed_login_count + 1 >= 5 THEN NOW() + INTERVAL '15 minutes'
+		        ELSE locked_until
+		    END
+		WHERE id = $1`, userID)
+	return err
+}
+
+// ResetFailedLogin resets the failed login counter after successful login
+func ResetFailedLogin(userID int) error {
+	db := database.AppDB
+	_, err := db.Exec(`UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE id = $1`, userID)
+	return err
+}
+
+// IsAccountLocked checks if the account is currently locked
+func IsAccountLocked(userID int) (bool, error) {
+	db := database.AppDB
+	var locked bool
+	err := db.QueryRow(`SELECT COALESCE(locked_until > NOW(), false) FROM users WHERE id = $1`, userID).Scan(&locked)
+	if err != nil {
+		return false, err
+	}
+	return locked, nil
+}
+
+// GetUserIDByUsername returns the user ID for a given username (for pre-auth lockout check)
+func GetUserIDByUsername(username string) (int, error) {
+	db := database.AppDB
+	var id int
+	err := db.QueryRow(`SELECT id FROM users WHERE username = $1`, username).Scan(&id)
+	return id, err
+}
