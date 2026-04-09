@@ -31,8 +31,8 @@ jobs:
       - name: Lint
         run: make lint
 
-      - name: Build Linux and Windows
-        run: make build-linux build-windows
+      - name: Build Linux
+        run: make build-linux
 
       - name: Verify binaries
         run: |
@@ -40,5 +40,3 @@ jobs:
           ls -la bin/charon_linux_amd64 bin/worker_linux_amd64
           echo "=== Linux arm64 ==="
           ls -la bin/charon_linux_arm64 bin/worker_linux_arm64
-          echo "=== Windows amd64 ==="
-          ls -la bin/charon_windows_amd64.exe bin/worker_windows_amd64.exe
