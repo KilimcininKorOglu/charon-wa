@@ -78,6 +78,34 @@ func InvalidateWebhookCache(instanceID string) {
 	log.Printf("🗑️ Webhook cache invalidated for instance: %s", instanceID)
 }
 
+// webhookCacheSweepInterval controls how often the expired-entry sweeper runs.
+var webhookCacheSweepInterval = 10 * time.Minute
+
+// sweepExpiredWebhookCache walks the cache once and evicts expired entries.
+func sweepExpiredWebhookCache() {
+	now := time.Now()
+	webhookCacheMutex.Lock()
+	defer webhookCacheMutex.Unlock()
+	for id, cfg := range webhookCache {
+		if cfg == nil || now.After(cfg.ExpiresAt) {
+			delete(webhookCache, id)
+		}
+	}
+}
+
+// StartWebhookCacheSweeper launches a background goroutine that periodically
+// removes expired webhook cache entries. Safe to call once at startup.
+func StartWebhookCacheSweeper() {
+	go func() {
+		ticker := time.NewTicker(webhookCacheSweepInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			sweepExpiredWebhookCache()
+		}
+	}()
+	log.Printf("🧹 Webhook cache sweeper started (interval: %v)", webhookCacheSweepInterval)
+}
+
 // webhookRetryBackoffs is the delay sequence between retry attempts
 // (initial attempt + 3 retries = 4 total tries).
 var webhookRetryBackoffs = []time.Duration{1 * time.Second, 5 * time.Second, 30 * time.Second}

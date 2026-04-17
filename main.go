@@ -165,6 +165,9 @@ func main() {
 	// Initialize session-based authentication
 	service.InitSessionConfig()
 
+	// Start periodic sweep of expired webhook cache entries
+	service.StartWebhookCacheSweeper()
+
 	// **************************
 	// Main process
 	//***************************
