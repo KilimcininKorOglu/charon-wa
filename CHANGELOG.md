@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.3.0] - 2026-04-17
+
+### Added
+- Webhook delivery retries with exponential backoff (1s/5s/30s) for 5xx responses
+- Periodic sweeper goroutine that evicts expired webhook cache entries every 10 minutes
+- Version, commit hash, and build date populated into the worker binary via ldflags
+
+### Changed
+- Align default Gemini model across code, schema, and frontend to `gemini-flash-latest`
+- Cache parsed CORS origins, cookie-secure flag, 9-digit phone flag, and warming worker flag at startup instead of reading env per request
+- Paginate list endpoints and strip the session blob from non-admin `/api/instances` responses
+- Enable Echo Gzip middleware on API responses
+- Restrict uploads listing endpoint to admin role
+- Make magic-byte verification mandatory inside `ValidateImageFile` so callers cannot skip it
+- Remove unused Register handler and legacy JWT-era tables from the startup schema
+- Reuse package-level `http.Client` singletons across webhook, worker, and media download call sites
+- Debounce session-touch DB writes per session (5 minute window) to cut per-request load
+- Synchronize OpenAPI spec with cookie + API key auth and current routes
+- Purge stale JWT references across handler/middleware comments and OpenAPI spec
+- Drop unused `golang-jwt/jwt/v5` direct dependency
+
+### Fixed
+- Stream media downloads with a size limit to prevent OOM on oversized remote files
+- Include a timestamp in the webhook HMAC signature and expose it via `X-Charon-Timestamp`
+- Add a 30 second per-request timeout to Gemini calls and suppress the MAX_TOKENS notice in WhatsApp replies
+- Clamp warming AI temperature to [0.0, 2.0] and max tokens to [1, 4096] on room save
+- Use `math/rand` for warming auto-reply delay so pseudo-randomness is consistent with the rest of the feature
+- Return an explicit 400 when the requested warming template is missing
+- Route file upload errors through `ErrorResponse` instead of raw error strings
+- Hide whatsmeow error detail from WebSocket broadcast payloads
+- Enforce size limits via streaming reads on multipart uploads and verify uploaded file magic bytes before routing
+- Cap session sliding expiry with a 30-day absolute deadline via PostgreSQL `LEAST()`
+- Reject wildcard and malformed CORS origins on startup
+- Return a uniform 403 response on phone-access denial to prevent enumeration
+- Emit `Retry-After` and rate-limit headers on 429 responses
+- Invalidate the webhook cache when an instance is deleted
+- Clear the warming auto-reply cooldown when a room is finished, stopped, paused, or restarted
+- Rate limit the logout endpoint
+- Default `sslmode=require` in `.env.example` for all PostgreSQL URLs
+- Remove duplicate `ErrTemplateNotFound` declaration in the warming service package
+
 ## [1.2.5] - 2026-04-17
 
 ### Added
