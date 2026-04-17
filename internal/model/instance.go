@@ -161,9 +161,17 @@ func UpdateInstanceQR(instanceID, qr string, expiresAt time.Time) error {
 }
 
 // Get all instances from custom database
-func GetAllInstances() ([]Instance, error) {
+// GetAllInstances lists instances with optional pagination. If includeSessionData
+// is false the BYTEA session blob is not read — non-admin callers should pass
+// false so the WA session is never transferred out of PostgreSQL for them.
+// limit <= 0 means "no pagination" (admin/back-compat path).
+func GetAllInstances(limit, offset int, includeSessionData bool) ([]Instance, error) {
+	sessionCol := "NULL::bytea"
+	if includeSessionData {
+		sessionCol = "session_data"
+	}
 	query := `
-        SELECT 
+        SELECT
             id,
             instance_id,
             phone_number,
@@ -182,21 +190,27 @@ func GetAllInstances() ([]Instance, error) {
             connected_at,
             disconnected_at,
             last_seen,
-            session_data,
-			circle,
-			used,
-			description,
-			created_by
+            ` + sessionCol + `,
+            circle,
+            used,
+            description,
+            created_by
         FROM instances
-        ORDER BY 
+        ORDER BY
             CASE WHEN circle = 'one' THEN 0 ELSE 1 END,
             circle ASC,
-            used DESC, 
-            is_connected DESC, 
+            used DESC,
+            is_connected DESC,
             created_at DESC
     `
 
-	rows, err := database.AppDB.Query(query)
+	args := []interface{}{}
+	if limit > 0 {
+		query += " LIMIT $1 OFFSET $2"
+		args = append(args, limit, offset)
+	}
+
+	rows, err := database.AppDB.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

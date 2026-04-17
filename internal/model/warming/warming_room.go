@@ -291,7 +291,7 @@ func GetAllWarmingRooms(status string, userID int64, isAdmin bool) ([]WarmingRoo
 		args = append(args, userID)
 	}
 
-	query += " ORDER BY created_at DESC"
+	query += " ORDER BY created_at DESC LIMIT 500"
 
 	rows, err := database.AppDB.Query(query, args...)
 	if err != nil {

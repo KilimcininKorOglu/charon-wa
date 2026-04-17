@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -406,19 +407,34 @@ func GetStatus(c echo.Context) error {
 	})
 }
 
-// GET /instances?all=true
+// GET /instances?all=true&page=1&limit=100
 func GetAllInstances(c echo.Context) error {
 
 	showAll := c.QueryParam("all") == "true"
 
-	// Get all instances from custom table
-	dbInstances, err := model.GetAllInstances()
-	if err != nil {
-		return ErrorResponse(c, http.StatusInternalServerError, "Failed to get instances", "DB_QUERY_FAILED", err.Error())
+	// Optional pagination (applies to admin path; non-admin is already filtered later).
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	if limit <= 0 {
+		limit = 100
 	}
+	if limit > 500 {
+		limit = 500
+	}
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * limit
 
 	// Get current user claims
 	userClaims, _ := c.Get("user_claims").(*service.Claims)
+	isAdmin := userClaims != nil && userClaims.Role == "admin"
+
+	// Admin sees full session_data; regular users never pull the BYTEA blob.
+	dbInstances, err := model.GetAllInstances(limit, offset, isAdmin)
+	if err != nil {
+		return ErrorResponse(c, http.StatusInternalServerError, "Failed to get instances", "DB_QUERY_FAILED", err.Error())
+	}
 
 	// Get all sessions from memory (active sessions)
 	sessions := service.GetAllSessions()

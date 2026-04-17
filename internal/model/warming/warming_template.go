@@ -95,7 +95,7 @@ func GetAllWarmingTemplates(category string, userID int64, isAdmin bool) ([]Warm
 			args = append(args, userID)
 		}
 
-		query += " ORDER BY category, name"
+		query += " ORDER BY category, name LIMIT 500"
 	} else {
 		query = `
 			SELECT id, category, name, structure, created_by, created_at, updated_at
@@ -108,7 +108,7 @@ func GetAllWarmingTemplates(category string, userID int64, isAdmin bool) ([]Warm
 			args = append(args, userID)
 		}
 
-		query += " ORDER BY category, name"
+		query += " ORDER BY category, name LIMIT 500"
 	}
 
 	rows, err := database.AppDB.Query(query, args...)

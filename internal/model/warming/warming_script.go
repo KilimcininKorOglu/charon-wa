@@ -107,7 +107,9 @@ func GetAllWarmingScripts(q, category string, userID int64, isAdmin bool) ([]War
 		argCount++
 	}
 
-	query += " ORDER BY created_at DESC"
+	// Cap row count to avoid scanning arbitrarily large tables on ad-hoc list calls.
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d", argCount)
+	args = append(args, 500)
 
 	rows, err := database.AppDB.Query(query, args...)
 	if err != nil {
