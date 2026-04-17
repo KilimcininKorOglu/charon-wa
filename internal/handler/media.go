@@ -81,7 +81,7 @@ func SendMediaFile(c echo.Context) error {
 		return ErrorResponse(c, 400, "File is required", "FILE_REQUIRED", err.Error())
 	}
 
-	// 8. DETECT MEDIA TYPE
+	// 8. DETECT MEDIA TYPE (from filename; re-verified against content below)
 	mediaType := helper.DetectMediaType(file.Filename)
 
 	// 9. READ FILE WITH SIZE LIMIT (pre-check + streaming cap)
@@ -90,6 +90,17 @@ func SendMediaFile(c echo.Context) error {
 	if err != nil {
 		return ErrorResponse(c, 400, "File too large or unreadable", "FILE_TOO_LARGE",
 			fmt.Sprintf("Type: %s, Max: %d bytes, Error: %v", mediaType, maxSize, err))
+	}
+
+	// 9b. VERIFY CONTENT TYPE by magic-byte sniffing — reject spoofed extensions.
+	sniffedType := helper.DetectMediaTypeFromBytes(fileData)
+	if sniffedType != mediaType {
+		sniffedMax := getMaxFileSize(sniffedType)
+		if len(fileData) > sniffedMax {
+			return ErrorResponse(c, 400, "File too large for detected media type", "FILE_TOO_LARGE",
+				fmt.Sprintf("Detected: %s, Max: %d bytes, Got: %d", sniffedType, sniffedMax, len(fileData)))
+		}
+		mediaType = sniffedType
 	}
 
 	// 10. CONVERT MEDIA TYPE
@@ -455,7 +466,7 @@ func SendMediaFileByNumber(c echo.Context) error {
 		return ErrorResponse(c, 400, "File is required", "FILE_REQUIRED", err.Error())
 	}
 
-	// 9. DETECT MEDIA TYPE
+	// 9. DETECT MEDIA TYPE (from filename; re-verified against content below)
 	mediaType := helper.DetectMediaType(file.Filename)
 
 	// 10. READ FILE WITH SIZE LIMIT (pre-check + streaming cap)
@@ -464,6 +475,17 @@ func SendMediaFileByNumber(c echo.Context) error {
 	if err != nil {
 		return ErrorResponse(c, 400, "File too large or unreadable", "FILE_TOO_LARGE",
 			fmt.Sprintf("Type: %s, Max: %d bytes, Error: %v", mediaType, maxSize, err))
+	}
+
+	// 10b. VERIFY CONTENT TYPE by magic-byte sniffing — reject spoofed extensions.
+	sniffedType := helper.DetectMediaTypeFromBytes(fileData)
+	if sniffedType != mediaType {
+		sniffedMax := getMaxFileSize(sniffedType)
+		if len(fileData) > sniffedMax {
+			return ErrorResponse(c, 400, "File too large for detected media type", "FILE_TOO_LARGE",
+				fmt.Sprintf("Detected: %s, Max: %d bytes, Got: %d", sniffedType, sniffedMax, len(fileData)))
+		}
+		mediaType = sniffedType
 	}
 
 	// 11. CONVERT MEDIA TYPE

@@ -178,6 +178,17 @@ func SendGroupMedia(c echo.Context) error {
 			fmt.Sprintf("Type: %s, Max: %d bytes, Error: %v", mediaType, maxSize, err))
 	}
 
+	// Verify content type by magic-byte sniffing — reject spoofed extensions.
+	sniffedType := helper.DetectMediaTypeFromBytes(fileData)
+	if sniffedType != mediaType {
+		sniffedMax := getMaxFileSize(sniffedType)
+		if len(fileData) > sniffedMax {
+			return ErrorResponse(c, 400, "File too large for detected media type", "FILE_TOO_LARGE",
+				fmt.Sprintf("Detected: %s, Max: %d bytes, Got: %d", sniffedType, sniffedMax, len(fileData)))
+		}
+		mediaType = sniffedType
+	}
+
 	var whatsmeowMediaType whatsmeow.MediaType
 	switch mediaType {
 	case "image":
@@ -526,6 +537,17 @@ func SendGroupMediaByNumber(c echo.Context) error {
 	if err != nil {
 		return ErrorResponse(c, 400, "File too large or unreadable", "FILE_TOO_LARGE",
 			fmt.Sprintf("Type: %s, Max: %d bytes, Error: %v", mediaType, maxSize, err))
+	}
+
+	// Verify content type by magic-byte sniffing — reject spoofed extensions.
+	sniffedType := helper.DetectMediaTypeFromBytes(fileData)
+	if sniffedType != mediaType {
+		sniffedMax := getMaxFileSize(sniffedType)
+		if len(fileData) > sniffedMax {
+			return ErrorResponse(c, 400, "File too large for detected media type", "FILE_TOO_LARGE",
+				fmt.Sprintf("Detected: %s, Max: %d bytes, Got: %d", sniffedType, sniffedMax, len(fileData)))
+		}
+		mediaType = sniffedType
 	}
 
 	var whatsmeowMediaType whatsmeow.MediaType

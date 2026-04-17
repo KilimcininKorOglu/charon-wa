@@ -34,6 +34,24 @@ func DetectMediaType(filename string) string {
 	}
 }
 
+// DetectMediaTypeFromBytes returns the high-level media category inferred from
+// content sniffing (http.DetectContentType over the first 512 bytes). Callers
+// should use this as the authoritative category instead of the client-supplied
+// filename extension.
+func DetectMediaTypeFromBytes(data []byte) string {
+	sniffed := http.DetectContentType(data)
+	switch {
+	case strings.HasPrefix(sniffed, "image/"):
+		return "image"
+	case strings.HasPrefix(sniffed, "video/"):
+		return "video"
+	case strings.HasPrefix(sniffed, "audio/"):
+		return "audio"
+	default:
+		return "document"
+	}
+}
+
 // GetMimeType returns MIME type based on media type
 func GetMimeType(mediaType, filename string) string {
 	ext := strings.ToLower(filepath.Ext(filename))
