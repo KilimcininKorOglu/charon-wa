@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -117,9 +118,10 @@ func GenerateReply(systemPrompt string, conversationHistory []ConversationMessag
 		return "", fmt.Errorf("empty response from Gemini")
 	}
 
-	// Add notification if response was truncated due to token limit
+	// Log truncation for operators but never leak the internal notice to the
+	// customer-facing reply — downstream callers receive the partial text.
 	if candidate.FinishReason == "MAX_TOKENS" {
-		responseText += "\n\n_[Response truncated due to reaching maximum token limit. For a more complete answer, please ask a more specific question or contact admin to increase the token limit.]_"
+		log.Printf("[gemini] response truncated by MAX_TOKENS (increase room.AIMaxTokens to avoid)")
 	}
 
 	return strings.TrimSpace(responseText), nil
