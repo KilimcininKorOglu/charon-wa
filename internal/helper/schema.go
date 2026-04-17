@@ -530,8 +530,10 @@ func InitCustomSchema() {
 			user_agent TEXT,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 			expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+			absolute_expires_at TIMESTAMP WITH TIME ZONE,
 			last_active_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 		);
+		ALTER TABLE sessions ADD COLUMN IF NOT EXISTS absolute_expires_at TIMESTAMP WITH TIME ZONE;
 		CREATE INDEX IF NOT EXISTS idx_sessions_session_id ON sessions(session_id);
 		CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 		CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);

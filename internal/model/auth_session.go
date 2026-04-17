@@ -37,6 +37,9 @@ func hashSessionToken(raw string) string {
 	return fmt.Sprintf("%x", hash)
 }
 
+// AbsoluteSessionLifetime caps the wall-clock lifetime of any session regardless of sliding activity.
+const AbsoluteSessionLifetime = 30 * 24 * time.Hour
+
 // CreateAuthSession creates a new session and returns the raw (unhashed) token
 func CreateAuthSession(userID int64, username, role, ipAddress, userAgent string, expiry time.Duration) (string, error) {
 	db := database.AppDB
@@ -48,10 +51,17 @@ func CreateAuthSession(userID int64, username, role, ipAddress, userAgent string
 	rawToken := hex.EncodeToString(b)
 	hashedToken := hashSessionToken(rawToken)
 
+	now := time.Now()
+	absoluteExpiresAt := now.Add(AbsoluteSessionLifetime)
+	expiresAt := now.Add(expiry)
+	if expiresAt.After(absoluteExpiresAt) {
+		expiresAt = absoluteExpiresAt
+	}
+
 	_, err := db.Exec(`
-		INSERT INTO sessions (session_id, user_id, username, role, ip_address, user_agent, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		hashedToken, userID, username, role, ipAddress, userAgent, time.Now().Add(expiry),
+		INSERT INTO sessions (session_id, user_id, username, role, ip_address, user_agent, expires_at, absolute_expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		hashedToken, userID, username, role, ipAddress, userAgent, expiresAt, absoluteExpiresAt,
 	)
 	if err != nil {
 		return "", err
@@ -102,13 +112,18 @@ func GetAuthSessionByToken(rawToken string) (*AuthSession, error) {
 	return s, nil
 }
 
-// TouchAuthSession updates last_active_at and extends expiry (sliding window)
+// TouchAuthSession updates last_active_at and extends expiry, but never past
+// the session's absolute_expires_at cap.
 func TouchAuthSession(hashedSessionID string, expiry time.Duration) error {
 	db := database.AppDB
+	proposed := time.Now().Add(expiry)
 	_, err := db.Exec(`
-		UPDATE sessions SET last_active_at = NOW(), expires_at = $1
+		UPDATE sessions
+		SET last_active_at = NOW(),
+		    expires_at = LEAST($1::timestamptz,
+		                       COALESCE(absolute_expires_at, $1::timestamptz))
 		WHERE session_id = $2`,
-		time.Now().Add(expiry), hashedSessionID,
+		proposed, hashedSessionID,
 	)
 	return err
 }
