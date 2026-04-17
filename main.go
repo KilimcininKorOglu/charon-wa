@@ -560,15 +560,15 @@ func main() {
 	apiKeys.DELETE("/:id", handler.DeleteAPIKey, customMiddleware.RequireRole("admin", "user"))
 
 	//----------------------------
-	// OUTBOX API (API Key protected)
+	// OUTBOX API
+	// Writes are API-key only (worker clients). Reads accept either a session
+	// cookie (admin UI) or an API key via the shared SessionOrAPIKey middleware
+	// on the `api` group.
 	//----------------------------
-	outbox := e.Group("/api/outbox", customMiddleware.APIKeyAuthMiddleware())
-	outbox.POST("/enqueue", handler.EnqueueOutbox)
-	outbox.POST("/enqueue-batch", handler.EnqueueOutboxBatch)
-	outbox.GET("/status/:id", handler.GetOutboxStatus)
-	outbox.GET("/messages", handler.ListOutboxMessages)
+	outboxWrite := e.Group("/api/outbox", customMiddleware.APIKeyAuthMiddleware())
+	outboxWrite.POST("/enqueue", handler.EnqueueOutbox)
+	outboxWrite.POST("/enqueue-batch", handler.EnqueueOutboxBatch)
 
-	// Outbox messages also accessible via session (for admin UI)
 	api.GET("/outbox/messages", handler.ListOutboxMessages)
 	api.GET("/outbox/status/:id", handler.GetOutboxStatus)
 
