@@ -6411,6 +6411,180 @@
           }
         }
       }
+    },
+    "/api/api-keys": {
+      "post": {
+        "summary": "Create an API key",
+        "description": "Generate a new API key for the authenticated user. The raw key is returned **once** and cannot be retrieved again — store it immediately.",
+        "tags": [
+          "API Keys"
+        ],
+        "operationId": "createAPIKey",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Human-readable label for this key"
+                  },
+                  "application": {
+                    "type": "string",
+                    "description": "Optional application lock — when set, enqueue calls are restricted to this application"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "API key created (raw key returned once)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "key": {
+                          "type": "string",
+                          "description": "Raw API key — shown only once"
+                        },
+                        "key_prefix": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "application": {
+                          "type": "string"
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Role not permitted (viewer cannot create keys)"
+          }
+        }
+      },
+      "get": {
+        "summary": "List API keys",
+        "description": "Return all API keys owned by the authenticated user. Raw keys are never returned — only prefixes and metadata.",
+        "tags": [
+          "API Keys"
+        ],
+        "operationId": "listAPIKeys",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Keys retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/APIKey"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/api-keys/{id}": {
+      "delete": {
+        "summary": "Delete an API key",
+        "description": "Revoke an API key owned by the authenticated user.",
+        "tags": [
+          "API Keys"
+        ],
+        "operationId": "deleteAPIKey",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "API key ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Key deleted"
+          },
+          "400": {
+            "description": "Invalid key ID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Role not permitted"
+          },
+          "404": {
+            "description": "Key not found or not owned by caller"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6456,6 +6630,36 @@
           },
           "file": {
             "type": "string"
+          }
+        }
+      },
+      "APIKey": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "user_id": {
+            "type": "integer"
+          },
+          "key_prefix": {
+            "type": "string",
+            "description": "Non-secret prefix (first 8 chars of the raw key)"
+          },
+          "name": {
+            "type": "string"
+          },
+          "application": {
+            "type": "string"
+          },
+          "last_used_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       }
