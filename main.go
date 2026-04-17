@@ -275,11 +275,47 @@ func main() {
 
 	// WebSocket and health check
 	e.GET("/ws", handler.WebSocketHandler(hub)) // WebSocket listener (Gorilla)
-	e.GET("/", func(c echo.Context) error {     // Health check
-		return c.JSON(200, map[string]interface{}{
-			"success": true,
+	e.GET("/", func(c echo.Context) error { // Health check
+		ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
+		defer cancel()
+
+		checks := map[string]string{}
+		allHealthy := true
+
+		if database.AppDB != nil {
+			if err := database.AppDB.PingContext(ctx); err != nil {
+				checks["app_db"] = "unhealthy: " + err.Error()
+				allHealthy = false
+			} else {
+				checks["app_db"] = "ok"
+			}
+		}
+		if database.OutboxDB != nil && database.OutboxDB != database.AppDB {
+			if err := database.OutboxDB.PingContext(ctx); err != nil {
+				checks["outbox_db"] = "unhealthy: " + err.Error()
+				allHealthy = false
+			} else {
+				checks["outbox_db"] = "ok"
+			}
+		}
+		if database.WhatsmeowDB != nil {
+			if err := database.WhatsmeowDB.PingContext(ctx); err != nil {
+				checks["whatsmeow_db"] = "unhealthy: " + err.Error()
+				allHealthy = false
+			} else {
+				checks["whatsmeow_db"] = "ok"
+			}
+		}
+
+		status := 200
+		if !allHealthy {
+			status = 503
+		}
+		return c.JSON(status, map[string]interface{}{
+			"success": allHealthy,
 			"message": "WhatsApp API is running",
 			"version": "1.0.0",
+			"checks":  checks,
 		})
 	})
 

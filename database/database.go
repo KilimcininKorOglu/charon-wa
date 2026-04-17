@@ -9,13 +9,18 @@ import (
 	"go.mau.fi/whatsmeow/store/sqlstore"
 )
 
-var Container *sqlstore.Container
+var (
+	Container    *sqlstore.Container
+	WhatsmeowDB  *sql.DB
+)
 
 func InitWhatsmeow(dbURL string) {
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatal("Failed to connect database:", err)
 	}
+
+	WhatsmeowDB = db
 
 	// Create whatsmeow container
 	Container = sqlstore.NewWithDB(db, "postgres", nil)
