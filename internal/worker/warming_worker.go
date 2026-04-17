@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -14,17 +15,24 @@ import (
 	"charon/internal/ws"
 )
 
-// StartWarmingWorker runs the warming worker in background
-func StartWarmingWorker(hub ws.RealtimePublisher) {
+// StartWarmingWorker runs the warming worker until ctx is cancelled.
+// The caller is expected to invoke it as a goroutine and cancel ctx on shutdown.
+func StartWarmingWorker(ctx context.Context, hub ws.RealtimePublisher) {
 	log.Println("🤖 Warming Worker started")
 
 	interval := helper.GetEnvAsInt("WARMING_WORKER_INTERVAL_SECONDS", 5)
 	ticker := time.NewTicker(time.Duration(interval) * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		if err := processActiveRooms(hub); err != nil {
-			log.Printf("❌ Worker error: %v", err)
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("🤖 Warming Worker stopping (context cancelled)")
+			return
+		case <-ticker.C:
+			if err := processActiveRooms(hub); err != nil {
+				log.Printf("❌ Worker error: %v", err)
+			}
 		}
 	}
 }

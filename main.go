@@ -489,10 +489,12 @@ func main() {
 		port = "2121" // safe default
 	}
 
-	// Start warming worker if enabled
+	// Start warming worker if enabled — shared context cancelled during shutdown
+	warmingCtx, cancelWarming := context.WithCancel(context.Background())
+	defer cancelWarming()
 	if os.Getenv("WARMING_WORKER_ENABLED") == "true" {
 		log.Println("🚀 Starting Warming Worker...")
-		go worker.StartWarmingWorker(hub)
+		go worker.StartWarmingWorker(warmingCtx, hub)
 	} else {
 		log.Println("⏸️  Warming Worker disabled (set WARMING_WORKER_ENABLED=true to enable)")
 	}
@@ -528,6 +530,7 @@ func main() {
 	<-quit
 
 	log.Println("Shutting down API server...")
+	cancelWarming()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := e.Shutdown(ctx); err != nil {
