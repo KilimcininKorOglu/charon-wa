@@ -133,7 +133,7 @@ func (w *WorkerInstance) runCycle() {
 	}
 
 	// 3. Get Instances for this Circle
-	instances, err := w.client.GetInstances(w.config.Circle)
+	instances, err := w.client.GetInstances(w.ctx, w.config.Circle)
 	if err != nil {
 		errMsg := fmt.Sprintf("Error fetching instances: %v", err)
 		log.Printf("[%s] %s", w.config.WorkerName, errMsg)
@@ -161,16 +161,16 @@ func (w *WorkerInstance) runCycle() {
 	if w.config.AllowMedia && msg.File.Valid && msg.File.String != "" {
 		// Media Message (File with Caption from Messages)
 		if w.config.MessageType == "group" {
-			success, apiMsg, err = w.client.SendGroupMediaURL(selectedInstance.InstanceID, destination, msg.File.String, msg.Messages)
+			success, apiMsg, err = w.client.SendGroupMediaURL(w.ctx, selectedInstance.InstanceID, destination, msg.File.String, msg.Messages)
 		} else {
-			success, apiMsg, err = w.client.SendMediaURL(selectedInstance.InstanceID, destination, msg.File.String, msg.Messages)
+			success, apiMsg, err = w.client.SendMediaURL(w.ctx, selectedInstance.InstanceID, destination, msg.File.String, msg.Messages)
 		}
 	} else {
 		// Text Message
 		if w.config.MessageType == "group" {
-			success, apiMsg, err = w.client.SendGroupMessage(selectedInstance.InstanceID, destination, msg.Messages)
+			success, apiMsg, err = w.client.SendGroupMessage(w.ctx, selectedInstance.InstanceID, destination, msg.Messages)
 		} else {
-			success, apiMsg, err = w.client.SendMessage(selectedInstance.InstanceID, destination, msg.Messages)
+			success, apiMsg, err = w.client.SendMessage(w.ctx, selectedInstance.InstanceID, destination, msg.Messages)
 		}
 	}
 

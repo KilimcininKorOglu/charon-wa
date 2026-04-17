@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,12 @@ import (
 	"sync"
 	"time"
 )
+
+// sharedHTTPClient is reused across all outbound API calls so we pool
+// TCP connections and every request shares a bounded total timeout.
+var sharedHTTPClient = &http.Client{
+	Timeout: 30 * time.Second,
+}
 
 type InstanceInfo struct {
 	InstanceID  string `json:"instanceId"`
@@ -56,7 +63,7 @@ func (c *CharonClient) setAuthHeader(req *http.Request) {
 	req.Header.Set("X-API-Key", c.APIKey)
 }
 
-func (c *CharonClient) GetInstances(circle string) ([]InstanceInfo, error) {
+func (c *CharonClient) GetInstances(ctx context.Context, circle string) ([]InstanceInfo, error) {
 	c.mu.RLock()
 	if c.allInstancesCache != nil && time.Now().Before(c.cacheExpiry) {
 		var instances []InstanceInfo
@@ -73,11 +80,13 @@ func (c *CharonClient) GetInstances(circle string) ([]InstanceInfo, error) {
 	}
 	c.mu.RUnlock()
 
-	req, _ := http.NewRequest("GET", c.BaseURL+"/api/instances?all=true", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", c.BaseURL+"/api/instances?all=true", nil)
+	if err != nil {
+		return nil, err
+	}
 	c.setAuthHeader(req)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := sharedHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -106,19 +115,21 @@ func (c *CharonClient) GetInstances(circle string) ([]InstanceInfo, error) {
 	return instances, nil
 }
 
-func (c *CharonClient) SendMessage(instanceID, to, message string) (bool, string, error) {
+func (c *CharonClient) SendMessage(ctx context.Context, instanceID, to, message string) (bool, string, error) {
 	payload, _ := json.Marshal(map[string]string{
 		"to":      to,
 		"message": message,
 	})
 
 	url := fmt.Sprintf("%s/api/send/%s", c.BaseURL, instanceID)
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		return false, "", err
+	}
 	c.setAuthHeader(req)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := sharedHTTPClient.Do(req)
 	if err != nil {
 		return false, "", err
 	}
@@ -133,19 +144,21 @@ func (c *CharonClient) SendMessage(instanceID, to, message string) (bool, string
 	return res.Success, res.Message, nil
 }
 
-func (c *CharonClient) SendGroupMessage(instanceID, groupID, message string) (bool, string, error) {
+func (c *CharonClient) SendGroupMessage(ctx context.Context, instanceID, groupID, message string) (bool, string, error) {
 	payload, _ := json.Marshal(map[string]string{
 		"message":  message,
 		"groupJid": groupID,
 	})
 
 	url := fmt.Sprintf("%s/api/send-group/%s", c.BaseURL, instanceID)
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		return false, "", err
+	}
 	c.setAuthHeader(req)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := sharedHTTPClient.Do(req)
 	if err != nil {
 		return false, "", err
 	}
@@ -160,7 +173,7 @@ func (c *CharonClient) SendGroupMessage(instanceID, groupID, message string) (bo
 	return res.Success, res.Message, nil
 }
 
-func (c *CharonClient) SendMediaURL(instanceID, to, mediaURL, caption string) (bool, string, error) {
+func (c *CharonClient) SendMediaURL(ctx context.Context, instanceID, to, mediaURL, caption string) (bool, string, error) {
 	payload, _ := json.Marshal(map[string]string{
 		"to":       to,
 		"mediaUrl": mediaURL,
@@ -168,12 +181,14 @@ func (c *CharonClient) SendMediaURL(instanceID, to, mediaURL, caption string) (b
 	})
 
 	url := fmt.Sprintf("%s/api/send/%s/media-url", c.BaseURL, instanceID)
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		return false, "", err
+	}
 	c.setAuthHeader(req)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := sharedHTTPClient.Do(req)
 	if err != nil {
 		return false, "", err
 	}
@@ -188,7 +203,7 @@ func (c *CharonClient) SendMediaURL(instanceID, to, mediaURL, caption string) (b
 	return res.Success, res.Message, nil
 }
 
-func (c *CharonClient) SendGroupMediaURL(instanceID, groupID, mediaURL, caption string) (bool, string, error) {
+func (c *CharonClient) SendGroupMediaURL(ctx context.Context, instanceID, groupID, mediaURL, caption string) (bool, string, error) {
 	payload, _ := json.Marshal(map[string]string{
 		"groupJid": groupID,
 		"mediaUrl": mediaURL,
@@ -196,12 +211,14 @@ func (c *CharonClient) SendGroupMediaURL(instanceID, groupID, mediaURL, caption 
 	})
 
 	url := fmt.Sprintf("%s/api/send-group/%s/media-url", c.BaseURL, instanceID)
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		return false, "", err
+	}
 	c.setAuthHeader(req)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := sharedHTTPClient.Do(req)
 	if err != nil {
 		return false, "", err
 	}
