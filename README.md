@@ -345,12 +345,12 @@ Configure these in your `.env` file.
 
 | Variable              | Description                                     | Default | Example                                      |
 |:----------------------|:------------------------------------------------|:--------|:---------------------------------------------|
-| `DATABASE_URL`        | PostgreSQL URL for whatsmeow session storage    | --      | `postgres://user:pass@localhost:5432/db`     |
-| `APP_DATABASE_URL`    | PostgreSQL URL for application data             | --      | `postgres://user:pass@localhost:5432/app`    |
-| `OUTBOX_DATABASE_URL` | PostgreSQL URL for outbox (optional)            | --      | `postgres://user:pass@localhost:5432/outbox` |
+| `DATABASE_URL`        | PostgreSQL URL for whatsmeow session storage (recommend `?sslmode=require` in production) | --      | `postgres://user:pass@localhost:5432/db?sslmode=require` |
+| `APP_DATABASE_URL`    | PostgreSQL URL for application data             | --      | `postgres://user:pass@localhost:5432/app?sslmode=require` |
+| `OUTBOX_DATABASE_URL` | PostgreSQL URL for outbox (optional)            | --      | `postgres://user:pass@localhost:5432/outbox?sslmode=require` |
 | `PORT`                | Server listening port                           | `2121`  | `3000`                                       |
 | `BASEURL`             | Public host/IP of the server (without protocol) | --      | `127.0.0.1`                                  |
-| `CORS_ALLOW_ORIGINS`  | Allowed origins for CORS (required)             | --      | `http://localhost:3000`                      |
+| `CORS_ALLOW_ORIGINS`  | Comma-separated allowed origins (required). **Wildcards `*` and scheme-less entries are rejected on startup** | --      | `http://localhost:3000,https://app.example.com` |
 | `BEHIND_PROXY`        | Enable `X-Real-IP` extraction behind reverse proxy | `false` | `true`                                    |
 
 ### Features
