@@ -49,7 +49,9 @@ func CreateUploadDirectory() error {
 	return nil
 }
 
-// ValidateImageFile performs basic validation on uploaded file
+// ValidateImageFile performs basic validation on uploaded file and
+// mandatorily verifies the on-disk magic-byte signature so callers cannot
+// rely on the client-supplied Content-Type alone.
 func ValidateImageFile(fileHeader *multipart.FileHeader) error {
 	// Check file size
 	if fileHeader.Size > MaxAvatarSizeBytes {
@@ -70,6 +72,18 @@ func ValidateImageFile(fileHeader *multipart.FileHeader) error {
 	contentType := fileHeader.Header.Get("Content-Type")
 	if !contains(AllowedMIMETypes, contentType) {
 		return fmt.Errorf("invalid MIME type: %s", contentType)
+	}
+
+	// Mandatory magic-byte verification — the client-supplied extension and
+	// Content-Type are both untrusted, so re-check the file contents here.
+	f, err := fileHeader.Open()
+	if err != nil {
+		return fmt.Errorf("failed to open file for signature check: %w", err)
+	}
+	defer f.Close()
+
+	if err := CheckMagicBytes(f); err != nil {
+		return err
 	}
 
 	return nil
