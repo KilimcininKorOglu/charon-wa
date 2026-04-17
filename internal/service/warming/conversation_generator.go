@@ -4,13 +4,9 @@ import (
 	"charon/database"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/rand"
 )
-
-// ErrTemplateNotFound is returned when no warming template matches the requested category.
-var ErrTemplateNotFound = errors.New("warming template not found for category")
 
 // TemplateLine represents a single line in template
 type TemplateLine struct {
