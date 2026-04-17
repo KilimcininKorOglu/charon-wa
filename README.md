@@ -1030,9 +1030,27 @@ Contact management endpoints (requires session cookie + instance access):
 
 ---
 
+## Pagination
+
+The following list endpoints accept standard `?page=<n>&limit=<n>` query parameters:
+
+| Endpoint                         | Default `limit` | Max `limit` |
+|:---------------------------------|:----------------|:------------|
+| `GET /api/instances`             | 100             | 500         |
+| `GET /api/admin/users`           | 100             | 500         |
+| `GET /api/outbox/messages`       | 50              | 500         |
+| `GET /api/contacts/:instanceId`  | 50              | 500         |
+| `GET /api/warming/rooms/:id/logs`| 100             | 500         |
+
+`page` is 1-indexed. Responses carry the `total` count alongside the items array so the caller can render pagination controls.
+
+Warming list endpoints (`scripts`, `templates`, `rooms`) currently return the full user-scoped set without pagination — filter client-side if needed.
+
+---
+
 ## API Reference
 
-An OpenAPI 3.0 specification is included in `api_docs/openapi.json`.
+An OpenAPI 3.0 specification is included in `api_docs/openapi.json` — routes, cookie/API-key auth schemes, and request/response schemas for 61 paths (80 operations). The spec is regenerated when routes change; if the runtime and spec diverge, treat the running code as canonical and file a report.
 
 ---
 
