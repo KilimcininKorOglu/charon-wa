@@ -14,6 +14,11 @@ import (
 var (
 	ConfigDB *sql.DB
 	OutboxDB *sql.DB
+
+	// Populated via -ldflags at build time (see Makefile).
+	version   = ""
+	commit    = ""
+	buildDate = ""
 )
 
 func initDB() {
@@ -48,7 +53,17 @@ func connectDB(dbURL, label string) *sql.DB {
 	return db
 }
 
+func defaultVersion(v string) string {
+	if v == "" {
+		return "dev"
+	}
+	return v
+}
+
 func main() {
+	log.Printf("Charon outbox worker starting (version=%s commit=%s built=%s)",
+		defaultVersion(version), defaultVersion(commit), defaultVersion(buildDate))
+
 	// 1. Load configuration
 	if err := godotenv.Load(); err != nil {
 		_ = godotenv.Load("../../.env")
