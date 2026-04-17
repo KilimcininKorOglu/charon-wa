@@ -210,8 +210,9 @@ Charon uses **server-side sessions with httpOnly cookies** for user/UI authentic
 1. **Login** with username/password (user accounts are created by admins via `POST /api/admin/users`)
 2. The server creates a DB-backed session and sets an HttpOnly, Secure, SameSite=Strict `session` cookie
 3. The browser sends the cookie automatically on all subsequent requests — no `Authorization` header needed
-4. Sessions use **sliding expiry** (7 days default, extended on each request)
-5. Admin role change or user deactivation triggers instant session revocation across all devices
+4. Sessions use **sliding expiry** (7 days default, extended on each request) capped by a **30-day absolute deadline** — even continuously used sessions must re-authenticate at least every 30 days
+5. Session touch DB writes are debounced per-session (max once every 5 minutes) to avoid DB contention under chatty clients
+6. Admin role change or user deactivation triggers instant session revocation across all devices
 
 ### Login
 
@@ -252,7 +253,7 @@ After login, the browser stores the `session` cookie and sends it automatically.
 POST /logout
 ```
 
-Destroys the session server-side and clears the cookie. No body required — the `session` cookie identifies the session to destroy. Available on a public route so expired sessions can still log out cleanly.
+Destroys the session server-side and clears the cookie. No body required — the `session` cookie identifies the session to destroy. Available on a public route so expired sessions can still log out cleanly. Rate-limited with the same policy as `/login` to prevent credential-stuffing probes.
 
 ### Account Lockout
 
