@@ -110,6 +110,15 @@ func StartWebhookCacheSweeper() {
 // (initial attempt + 3 retries = 4 total tries).
 var webhookRetryBackoffs = []time.Duration{1 * time.Second, 5 * time.Second, 30 * time.Second}
 
+// webhookHTTPClient is reused across webhook deliveries so that keep-alive
+// connections and the SSRF-safe transport are not re-created per call.
+var webhookHTTPClient = &http.Client{
+	Timeout: 5 * time.Second,
+	Transport: &http.Transport{
+		DialContext: helper.SSRFSafeDialContext,
+	},
+}
+
 // Refactored function - now uses cache
 func SendIncomingMessageWebhook(instanceID string, data map[string]interface{}) {
 	// Get webhook config from cache (not DB!)
@@ -141,12 +150,7 @@ func SendIncomingMessageWebhook(instanceID string, data map[string]interface{}) 
 		timestampHeader = ts
 	}
 
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			DialContext: helper.SSRFSafeDialContext,
-		},
-	}
+	client := webhookHTTPClient
 
 	go func() {
 		attempts := len(webhookRetryBackoffs) + 1

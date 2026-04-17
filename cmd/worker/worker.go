@@ -21,6 +21,15 @@ import (
 	"charon/internal/helper"
 )
 
+// workerWebhookClient is shared across all webhook deliveries from the worker
+// so that keep-alive and the SSRF-safe transport aren't rebuilt per request.
+var workerWebhookClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		DialContext: helper.SSRFSafeDialContext,
+	},
+}
+
 type WorkerInstance struct {
 	config  WorkerConfig
 	client  *CharonClient
@@ -265,13 +274,7 @@ func (w *WorkerInstance) sendWebhook(msg *OutboxMessage, status int, statusText 
 		req.Header.Set("X-Charon-Signature", signature)
 	}
 
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-		Transport: &http.Transport{
-			DialContext: helper.SSRFSafeDialContext,
-		},
-	}
-	resp, err := client.Do(req)
+	resp, err := workerWebhookClient.Do(req)
 	if err != nil {
 		log.Printf("[%s] Webhook send error: %v", w.config.WorkerName, err)
 		return
