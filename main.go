@@ -85,6 +85,9 @@ func main() {
 	autoReplyEnv := os.Getenv("WARMING_AUTO_REPLY_ENABLED")
 	config.WarmingAutoReplyEnabled = (autoReplyEnv == "true")
 
+	// Warming worker feature flag (consumed below to start the goroutine).
+	config.WarmingWorkerEnabled = os.Getenv("WARMING_WORKER_ENABLED") == "true"
+
 	cooldownStr := os.Getenv("WARMING_AUTO_REPLY_COOLDOWN")
 	if cooldownStr != "" {
 		if cooldown, err := strconv.Atoi(cooldownStr); err == nil && cooldown > 0 {
@@ -608,7 +611,7 @@ func main() {
 	// Start warming worker if enabled — shared context cancelled during shutdown
 	warmingCtx, cancelWarming := context.WithCancel(context.Background())
 	defer cancelWarming()
-	if os.Getenv("WARMING_WORKER_ENABLED") == "true" {
+	if config.WarmingWorkerEnabled {
 		log.Println("🚀 Starting Warming Worker...")
 		go worker.StartWarmingWorker(warmingCtx, hub)
 	} else {
