@@ -371,13 +371,12 @@ func GetAvailableCircles(c echo.Context) error {
 // GetAvailableApplications returns list of available applications from outbox
 func GetAvailableApplications(c echo.Context) error {
 	claims := getClaims(c)
-	isAdmin := claims != nil && claims.Role == "admin"
-	userID := int64(0)
-	if claims != nil {
-		userID = claims.UserID
+	if claims == nil {
+		return ErrorResponse(c, http.StatusUnauthorized, "Authentication required", "UNAUTHORIZED", "")
 	}
 
-	applications, err := model.GetAvailableApplications(c.Request().Context(), userID, isAdmin)
+	isAdmin := claims.Role == "admin"
+	applications, err := model.GetAvailableApplications(c.Request().Context(), claims.UserID, isAdmin)
 	if err != nil {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve available applications", "INTERNAL_ERROR", err.Error())
 	}

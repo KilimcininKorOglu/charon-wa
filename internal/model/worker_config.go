@@ -4,6 +4,7 @@ import (
 	"charon/database"
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 )
 
@@ -273,9 +274,15 @@ func GetAvailableCircles(ctx context.Context, userID int64, isAdmin bool) ([]str
 	return circles, rows.Err()
 }
 
-// GetAvailableApplications retrieves distinct applications from the user's outbox messages.
-// Admins see all application names; regular users see only their own.
+// GetAvailableApplications retrieves distinct applications available to the caller.
+// Admins see the union of application names referenced anywhere in the outbox or worker configs.
+// Regular users see only the application names they themselves have already configured as
+// worker targets — this avoids probing other tenants' outbox rows for enumeration.
 func GetAvailableApplications(ctx context.Context, userID int64, isAdmin bool) ([]string, error) {
+	if userID <= 0 {
+		return nil, fmt.Errorf("invalid user id")
+	}
+
 	var query string
 	var args []interface{}
 
@@ -287,9 +294,9 @@ func GetAvailableApplications(ctx context.Context, userID int64, isAdmin bool) (
 			ORDER BY application`
 	} else {
 		query = `
-			SELECT DISTINCT application
-			FROM outbox
-			WHERE client_id = $1 AND application IS NOT NULL AND application != ''
+			SELECT DISTINCT TRIM(unnest(string_to_array(application, ','))) AS application
+			FROM outbox_worker_config
+			WHERE user_id = $1 AND application IS NOT NULL AND application != ''
 			ORDER BY application`
 		args = append(args, userID)
 	}
