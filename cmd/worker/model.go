@@ -82,18 +82,24 @@ func FetchWorkerConfigs(ctx context.Context) ([]WorkerConfig, error) {
 	return configs, rows.Err()
 }
 
-func ClaimPendingOutbox(ctx context.Context, applications []string) (*OutboxMessage, error) {
-	// Atomic claim: Find one pending message (status 0), set it to processing (status 3), and return it.
-	// Using FOR UPDATE SKIP LOCKED to prevent multiple workers from claiming the same row.
-	// Applications filter uses parameterized queries to prevent SQL injection.
+// ClaimPendingOutbox atomically claims one pending message scoped to the worker's owner.
+// clientID=0 means "admin worker" and matches any client_id (including legacy NULL rows);
+// any other value enforces tenant isolation via client_id = $N.
+func ClaimPendingOutbox(ctx context.Context, applications []string, clientID int) (*OutboxMessage, error) {
 	var args []interface{}
 	appFilter := ""
+	tenantFilter := ""
+
+	if clientID > 0 {
+		args = append(args, clientID)
+		tenantFilter = fmt.Sprintf(" AND client_id = $%d", len(args))
+	}
 
 	if len(applications) > 0 {
 		placeholders := make([]string, len(applications))
 		for i, app := range applications {
-			placeholders[i] = fmt.Sprintf("$%d", i+1)
 			args = append(args, app)
+			placeholders[i] = fmt.Sprintf("$%d", len(args))
 		}
 		appFilter = fmt.Sprintf(" AND application IN (%s)", strings.Join(placeholders, ","))
 	}
@@ -104,13 +110,13 @@ func ClaimPendingOutbox(ctx context.Context, applications []string) (*OutboxMess
 		WHERE id_outbox = (
 			SELECT id_outbox
 			FROM outbox
-			WHERE status = 0%s
+			WHERE status = 0%s%s
 			ORDER BY insertDateTime ASC
 			LIMIT 1
 			FOR UPDATE SKIP LOCKED
 		)
 		RETURNING id_outbox, destination, messages, status, application, table_id, file, insertDateTime
-	`, appFilter)
+	`, tenantFilter, appFilter)
 
 	row := OutboxDB.QueryRowContext(ctx, query, args...)
 	var msg OutboxMessage

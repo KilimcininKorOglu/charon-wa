@@ -91,8 +91,8 @@ func (w *WorkerInstance) runCycle() {
 		}
 	}
 
-	// 2. Claim a pending message (atomicly sets status to 3)
-	msg, err := ClaimPendingOutbox(w.ctx, applications)
+	// 2. Claim a pending message scoped to this worker's owner (tenant isolation).
+	msg, err := ClaimPendingOutbox(w.ctx, applications, w.config.UserID)
 
 	if err != nil {
 		if err != sql.ErrNoRows {
