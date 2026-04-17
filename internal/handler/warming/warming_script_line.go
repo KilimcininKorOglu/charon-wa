@@ -354,7 +354,7 @@ func GenerateWarmingScriptLines(c echo.Context) error {
 	})
 }
 
-// ReorderWarmingScriptLines handles POST /warming/scripts/:scriptId/lines/reorder
+// ReorderWarmingScriptLines handles PUT /warming/scripts/:scriptId/lines/reorder
 func ReorderWarmingScriptLines(c echo.Context) error {
 	scriptIDParam := c.Param("scriptId")
 	scriptID, err := strconv.ParseInt(scriptIDParam, 10, 64)
