@@ -921,14 +921,33 @@ Content-Type: application/json
 }
 ```
 
-When a secret is configured, Charon signs every outgoing webhook using HMAC-SHA256:
+When a secret is configured, Charon signs every outgoing webhook using HMAC-SHA256 over a timestamped payload:
 
-| Detail    | Value                              |
-|:----------|:-----------------------------------|
-| Header    | `X-Charon-Signature`             |
-| Algorithm | HMAC-SHA256                        |
-| Message   | Raw HTTP request body              |
-| Key       | Instance-specific `webhook_secret` |
+| Detail     | Value                                                 |
+|:-----------|:------------------------------------------------------|
+| Headers    | `X-Charon-Timestamp`, `X-Charon-Signature`          |
+| Algorithm  | HMAC-SHA256                                           |
+| Message    | `timestamp` + `.` + raw HTTP request body             |
+| Key        | Instance-specific `webhook_secret`                    |
+| Timestamp  | Unix seconds since epoch, sent as `X-Charon-Timestamp` |
+
+**Receiver-side verification recipe:**
+
+```python
+import hmac, hashlib, time
+
+ts = request.headers["X-Charon-Timestamp"]
+sig = request.headers["X-Charon-Signature"]
+body = request.get_data()  # raw bytes
+
+# Reject timestamps outside a replay window (recommend 5 minutes)
+if abs(time.time() - int(ts)) > 300:
+    return 401
+
+mac = hmac.new(secret.encode(), f"{ts}.".encode() + body, hashlib.sha256)
+if not hmac.compare_digest(mac.hexdigest(), sig):
+    return 401
+```
 
 **Webhook payload** follows the same format as the WebSocket `incoming_message` event shown above.
 
