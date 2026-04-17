@@ -91,6 +91,9 @@ func main() {
 	// Cookie security flag — default true, only disable for plain http localhost dev.
 	config.CookieSecure = os.Getenv("COOKIE_SECURE") != "false"
 
+	// Phone validation fallback flag.
+	config.Allow9DigitPhoneNumber = os.Getenv("ALLOW_9_DIGIT_PHONE_NUMBER") == "true"
+
 	cooldownStr := os.Getenv("WARMING_AUTO_REPLY_COOLDOWN")
 	if cooldownStr != "" {
 		if cooldown, err := strconv.Atoi(cooldownStr); err == nil && cooldown > 0 {

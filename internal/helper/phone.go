@@ -2,7 +2,6 @@ package helper
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 
@@ -72,7 +71,7 @@ func FormatPhoneNumber(phone string) (types.JID, error) {
 //   - Numbers that don't start with the configured country code (local format without cc)
 //   - Numbers shorter than 10 digits
 func ShouldSkipValidation(phone string) bool {
-	if os.Getenv("ALLOW_9_DIGIT_PHONE_NUMBER") != "true" {
+	if !config.Allow9DigitPhoneNumber {
 		return false
 	}
 

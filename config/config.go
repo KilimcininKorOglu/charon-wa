@@ -18,6 +18,10 @@ var TypingDelayMax int
 // Phone Number Configuration
 var PhoneCountryCode string // e.g. "90" for Turkey, "62" for Indonesia, "" = no restriction (E.164 required)
 
+// Allow9DigitPhoneNumber toggles the fallback path that skips IsOnWhatsApp for
+// local-format numbers. Populated once at startup from ALLOW_9_DIGIT_PHONE_NUMBER.
+var Allow9DigitPhoneNumber bool
+
 // AI Configuration
 var AIEnabled bool
 var AIDefaultProvider string
