@@ -11,6 +11,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 - [Key Features](#key-features)
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
+- [Health Check](#health-check)
 - [Authentication](#authentication)
 - [Docker Development](#docker-development)
   - [Local Development](#local-development)
@@ -32,7 +33,9 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 - [Admin API](#admin-api)
 - [API Key Management](#api-key-management)
 - [Contacts API](#contacts-api)
+- [Pagination](#pagination)
 - [API Reference](#api-reference)
+- [Version Management](#version-management)
 - [Disclaimer](#disclaimer)
 
 ---
