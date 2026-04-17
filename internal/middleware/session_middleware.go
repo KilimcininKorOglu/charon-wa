@@ -3,12 +3,41 @@ package middleware
 import (
 	"log"
 	"net/http"
+	"sync"
+	"time"
 
 	"charon/internal/model"
 	"charon/internal/service"
 
 	"github.com/labstack/echo/v4"
 )
+
+// Sliding-expiry updates are cheap individually but a busy session can hammer
+// the DB on every request. We debounce per-session so at most one touch fires
+// every `touchDebounceInterval` per session ID.
+const touchDebounceInterval = 5 * time.Minute
+
+var (
+	touchDebounceLastHit sync.Map // map[string]time.Time — session ID → last touch
+)
+
+// shouldTouchSession returns true if enough time has elapsed since the last
+// touch for this session. Records the new timestamp when it returns true.
+func shouldTouchSession(sessionID string) bool {
+	now := time.Now()
+	if prev, ok := touchDebounceLastHit.Load(sessionID); ok {
+		if last, ok := prev.(time.Time); ok && now.Sub(last) < touchDebounceInterval {
+			return false
+		}
+	}
+	touchDebounceLastHit.Store(sessionID, now)
+	return true
+}
+
+// ForgetTouchedSession drops a session from the debounce map (call on logout).
+func ForgetTouchedSession(sessionID string) {
+	touchDebounceLastHit.Delete(sessionID)
+}
 
 // SessionAuthMiddleware validates the session cookie and sets user context
 func SessionAuthMiddleware() echo.MiddlewareFunc {
@@ -46,12 +75,15 @@ func SessionAuthMiddleware() echo.MiddlewareFunc {
 				})
 			}
 
-			// Async sliding expiry — extend session on each request
-			go func() {
-				if err := model.TouchAuthSession(session.SessionID, service.GetSessionExpiry()); err != nil {
-					log.Printf("Failed to touch session: %v", err)
-				}
-			}()
+			// Async sliding expiry — extend session on each request, but
+			// debounce per-session so we never hammer the DB on chatty clients.
+			if shouldTouchSession(session.SessionID) {
+				go func(sid string) {
+					if err := model.TouchAuthSession(sid, service.GetSessionExpiry()); err != nil {
+						log.Printf("Failed to touch session: %v", err)
+					}
+				}(session.SessionID)
+			}
 
 			// Set context keys — MUST match api_key_middleware.go
 			claims := &service.Claims{
