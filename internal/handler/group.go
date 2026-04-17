@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 
 	"charon/internal/helper"
 	"charon/internal/model"
@@ -170,23 +169,13 @@ func SendGroupMedia(c echo.Context) error {
 		return ErrorResponse(c, 400, "File is required", "FILE_REQUIRED", err.Error())
 	}
 
-	src, err := file.Open()
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to open file", "FILE_OPEN_FAILED", err.Error())
-	}
-	defer src.Close()
-
-	fileData, err := io.ReadAll(src)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to read file", "FILE_READ_FAILED", err.Error())
-	}
-
 	mediaType := helper.DetectMediaType(file.Filename)
 
 	maxSize := getMaxFileSize(mediaType)
-	if len(fileData) > maxSize {
-		return ErrorResponse(c, 400, "File too large", "FILE_TOO_LARGE",
-			fmt.Sprintf("File: %d bytes, Max: %d bytes", len(fileData), maxSize))
+	fileData, err := readMultipartUpload(file, maxSize)
+	if err != nil {
+		return ErrorResponse(c, 400, "File too large or unreadable", "FILE_TOO_LARGE",
+			fmt.Sprintf("Type: %s, Max: %d bytes, Error: %v", mediaType, maxSize, err))
 	}
 
 	var whatsmeowMediaType whatsmeow.MediaType
@@ -530,22 +519,13 @@ func SendGroupMediaByNumber(c echo.Context) error {
 		return ErrorResponse(c, 400, "File is required", "FILE_REQUIRED", err.Error())
 	}
 
-	src, err := file.Open()
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to open file", "FILE_OPEN_FAILED", err.Error())
-	}
-	defer src.Close()
-
-	fileData, err := io.ReadAll(src)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to read file", "FILE_READ_FAILED", err.Error())
-	}
-
 	mediaType := helper.DetectMediaType(file.Filename)
 
 	maxSize := getMaxFileSize(mediaType)
-	if len(fileData) > maxSize {
-		return ErrorResponse(c, 400, "File too large", "FILE_TOO_LARGE", fmt.Sprintf("File: %d bytes, Max: %d bytes", len(fileData), maxSize))
+	fileData, err := readMultipartUpload(file, maxSize)
+	if err != nil {
+		return ErrorResponse(c, 400, "File too large or unreadable", "FILE_TOO_LARGE",
+			fmt.Sprintf("Type: %s, Max: %d bytes, Error: %v", mediaType, maxSize, err))
 	}
 
 	var whatsmeowMediaType whatsmeow.MediaType

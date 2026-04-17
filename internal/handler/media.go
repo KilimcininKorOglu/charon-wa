@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 
 	"charon/internal/helper"
 	"charon/internal/model"
@@ -79,25 +81,15 @@ func SendMediaFile(c echo.Context) error {
 		return ErrorResponse(c, 400, "File is required", "FILE_REQUIRED", err.Error())
 	}
 
-	src, err := file.Open()
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to open file", "FILE_OPEN_FAILED", err.Error())
-	}
-	defer src.Close()
-
-	fileData, err := io.ReadAll(src)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to read file", "FILE_READ_FAILED", err.Error())
-	}
-
 	// 8. DETECT MEDIA TYPE
 	mediaType := helper.DetectMediaType(file.Filename)
 
-	// 9. VALIDATE FILE SIZE
+	// 9. READ FILE WITH SIZE LIMIT (pre-check + streaming cap)
 	maxSize := getMaxFileSize(mediaType)
-	if len(fileData) > maxSize {
-		return ErrorResponse(c, 400, "File too large", "FILE_TOO_LARGE",
-			fmt.Sprintf("File size: %d bytes, Max: %d bytes (%s)", len(fileData), maxSize, mediaType))
+	fileData, err := readMultipartUpload(file, maxSize)
+	if err != nil {
+		return ErrorResponse(c, 400, "File too large or unreadable", "FILE_TOO_LARGE",
+			fmt.Sprintf("Type: %s, Max: %d bytes, Error: %v", mediaType, maxSize, err))
 	}
 
 	// 10. CONVERT MEDIA TYPE
@@ -463,24 +455,15 @@ func SendMediaFileByNumber(c echo.Context) error {
 		return ErrorResponse(c, 400, "File is required", "FILE_REQUIRED", err.Error())
 	}
 
-	src, err := file.Open()
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to open file", "FILE_OPEN_FAILED", err.Error())
-	}
-	defer src.Close()
-
-	fileData, err := io.ReadAll(src)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to read file", "FILE_READ_FAILED", err.Error())
-	}
-
 	// 9. DETECT MEDIA TYPE
 	mediaType := helper.DetectMediaType(file.Filename)
 
-	// 10. VALIDATE FILE SIZE
+	// 10. READ FILE WITH SIZE LIMIT (pre-check + streaming cap)
 	maxSize := getMaxFileSize(mediaType)
-	if len(fileData) > maxSize {
-		return ErrorResponse(c, 400, "File too large", "FILE_TOO_LARGE", fmt.Sprintf("File size: %d bytes, Max: %d bytes (%s)", len(fileData), maxSize, mediaType))
+	fileData, err := readMultipartUpload(file, maxSize)
+	if err != nil {
+		return ErrorResponse(c, 400, "File too large or unreadable", "FILE_TOO_LARGE",
+			fmt.Sprintf("Type: %s, Max: %d bytes, Error: %v", mediaType, maxSize, err))
 	}
 
 	// 11. CONVERT MEDIA TYPE
@@ -526,6 +509,32 @@ func SendMediaFileByNumber(c echo.Context) error {
 		"fileSize":  len(fileData),
 		"verified":  true,
 	})
+}
+
+// readMultipartUpload streams a multipart file into memory while enforcing a
+// hard cap. It returns an error if the advertised size already exceeds the
+// limit, or if the stream ultimately exceeds it despite the header.
+func readMultipartUpload(file *multipart.FileHeader, maxSize int) ([]byte, error) {
+	if maxSize > 0 && file.Size > int64(maxSize) {
+		return nil, fmt.Errorf("file too large: %d bytes (max %d)", file.Size, maxSize)
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+
+	limit := int64(maxSize) + 1
+	buf := &bytes.Buffer{}
+	n, err := io.Copy(buf, io.LimitReader(src, limit))
+	if err != nil {
+		return nil, err
+	}
+	if n > int64(maxSize) {
+		return nil, fmt.Errorf("file too large: exceeds %d bytes", maxSize)
+	}
+	return buf.Bytes(), nil
 }
 
 // Helper: Get max file size per media type (WhatsApp limits)
