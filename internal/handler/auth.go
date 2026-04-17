@@ -412,11 +412,7 @@ func GetAllInstances(c echo.Context) error {
 	// Get all instances from custom table
 	dbInstances, err := model.GetAllInstances()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
-			"success": false,
-			"message": "Failed to get instances from DB",
-			"error":   err.Error(),
-		})
+		return ErrorResponse(c, http.StatusInternalServerError, "Failed to get instances", "DB_QUERY_FAILED", err.Error())
 	}
 
 	// Get current user claims
