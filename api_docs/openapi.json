@@ -6585,6 +6585,81 @@
           }
         }
       }
+    },
+    "/api/warming/scripts/{scriptId}/lines/reorder": {
+      "put": {
+        "summary": "Reorder warming script lines",
+        "description": "Bulk-update the sort order of script lines. Accepts an array of {id, sort_order} entries.",
+        "tags": [
+          "Warming"
+        ],
+        "operationId": "reorderWarmingScriptLines",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scriptId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "lines"
+                ],
+                "properties": {
+                  "lines": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "sort_order"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "sort_order": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lines reordered"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Not the script owner"
+          },
+          "404": {
+            "description": "Script not found"
+          }
+        }
+      }
     }
   },
   "components": {
