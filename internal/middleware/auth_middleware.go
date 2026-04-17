@@ -64,6 +64,13 @@ func SessionOrAPIKeyMiddleware() echo.MiddlewareFunc {
 						"error":   map[string]string{"code": "SESSION_EXPIRED"},
 					})
 				}
+				if err == model.ErrUserInactive {
+					return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+						"success": false,
+						"message": "Account is disabled",
+						"error":   map[string]string{"code": "USER_INACTIVE"},
+					})
+				}
 				log.Printf("Session validation error: %v", err)
 				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 					"success": false,

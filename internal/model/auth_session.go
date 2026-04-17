@@ -29,6 +29,7 @@ type AuthSession struct {
 var (
 	ErrSessionNotFound = errors.New("session not found")
 	ErrSessionExpired  = errors.New("session expired")
+	ErrUserInactive    = errors.New("user inactive")
 )
 
 func hashSessionToken(raw string) string {
@@ -64,14 +65,19 @@ func GetAuthSessionByToken(rawToken string) (*AuthSession, error) {
 	hashedToken := hashSessionToken(rawToken)
 
 	s := &AuthSession{}
+	var isActive bool
+	var currentRole string
 	err := db.QueryRow(`
-		SELECT id, session_id, user_id, username, role, ip_address, user_agent,
-		       created_at, expires_at, last_active_at
-		FROM sessions
-		WHERE session_id = $1`,
+		SELECT s.id, s.session_id, s.user_id, s.username, s.role, s.ip_address, s.user_agent,
+		       s.created_at, s.expires_at, s.last_active_at,
+		       u.is_active, u.role
+		FROM sessions s
+		JOIN users u ON u.id = s.user_id
+		WHERE s.session_id = $1`,
 		hashedToken,
 	).Scan(&s.ID, &s.SessionID, &s.UserID, &s.Username, &s.Role,
-		&s.IPAddress, &s.UserAgent, &s.CreatedAt, &s.ExpiresAt, &s.LastActiveAt)
+		&s.IPAddress, &s.UserAgent, &s.CreatedAt, &s.ExpiresAt, &s.LastActiveAt,
+		&isActive, &currentRole)
 
 	if err == sql.ErrNoRows {
 		return nil, ErrSessionNotFound
@@ -83,6 +89,15 @@ func GetAuthSessionByToken(rawToken string) (*AuthSession, error) {
 	if time.Now().After(s.ExpiresAt) {
 		return nil, ErrSessionExpired
 	}
+
+	if !isActive {
+		// Destroy all sessions of the disabled user — instant revocation
+		_, _ = db.Exec(`DELETE FROM sessions WHERE user_id = $1`, s.UserID)
+		return nil, ErrUserInactive
+	}
+
+	// Keep the session's cached role in sync with the current role on the user row
+	s.Role = currentRole
 
 	return s, nil
 }
