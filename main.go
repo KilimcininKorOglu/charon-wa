@@ -283,6 +283,25 @@ func main() {
 	rateBurst := helper.GetEnvAsInt("RATE_LIMIT_BURST", 10)
 	rateWindow := helper.GetEnvAsInt("RATE_LIMIT_WINDOW_MINUTES", 3)
 
+	// rateLimitDenyHandler returns 429 with Retry-After plus X-RateLimit-* headers.
+	rateLimitDenyHandler := func(limit int, windowSeconds int) func(echo.Context, string, error) error {
+		return func(c echo.Context, identifier string, err error) error {
+			reset := time.Now().Add(time.Duration(windowSeconds) * time.Second).Unix()
+			c.Response().Header().Set("Retry-After", strconv.Itoa(windowSeconds))
+			c.Response().Header().Set("X-RateLimit-Limit", strconv.Itoa(limit))
+			c.Response().Header().Set("X-RateLimit-Remaining", "0")
+			c.Response().Header().Set("X-RateLimit-Reset", strconv.FormatInt(reset, 10))
+			return c.JSON(http.StatusTooManyRequests, map[string]interface{}{
+				"success": false,
+				"message": "Rate limit exceeded. Please slow down.",
+				"error": map[string]interface{}{
+					"code":        "RATE_LIMITED",
+					"retry_after": windowSeconds,
+				},
+			})
+		}
+	}
+
 	e.Use(middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
 		Store: middleware.NewRateLimiterMemoryStoreWithConfig(
 			middleware.RateLimiterMemoryStoreConfig{
@@ -291,6 +310,7 @@ func main() {
 				ExpiresIn: time.Duration(rateWindow) * time.Minute,
 			},
 		),
+		DenyHandler: rateLimitDenyHandler(rateBurst, rateWindow*60),
 	}))
 
 	// =====================================================
@@ -306,6 +326,7 @@ func main() {
 				ExpiresIn: 5 * time.Minute,
 			},
 		),
+		DenyHandler: rateLimitDenyHandler(5, 60),
 	})
 
 	// New user authentication endpoints
