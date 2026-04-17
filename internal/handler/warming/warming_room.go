@@ -223,6 +223,12 @@ func UpdateRoomStatus(c echo.Context) error {
 		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to update room status", "UPDATE_STATUS_FAILED", err.Error())
 	}
 
+	// Clear auto-reply cooldown when room leaves ACTIVE state so a later
+	// restart does not inherit stale per-message throttling.
+	if req.Status == "FINISHED" || req.Status == "STOPPED" || req.Status == "PAUSED" {
+		service.CleanupReplyTime(id)
+	}
+
 	return handler.SuccessResponse(c, http.StatusOK, "Room status updated successfully", map[string]interface{}{
 		"id":     id,
 		"status": req.Status,
@@ -244,6 +250,9 @@ func RestartWarmingRoom(c echo.Context) error {
 		}
 		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to restart room", "RESTART_FAILED", err.Error())
 	}
+
+	// Reset auto-reply cooldown so the restarted room starts fresh.
+	service.CleanupReplyTime(id)
 
 	return handler.SuccessResponse(c, http.StatusOK, "Room restarted successfully", map[string]interface{}{
 		"id":               id,
