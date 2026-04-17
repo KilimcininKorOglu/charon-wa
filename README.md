@@ -1007,6 +1007,24 @@ Contact management endpoints (requires session cookie + instance access):
 
 An OpenAPI 3.0 specification is included in `api_docs/openapi.json`.
 
+---
+
+## Version Management
+
+The `VERSION` file at the repository root is the single source of truth for the
+project version. The release skill (`/version-update <x.y.z>`) must update, in
+this order:
+
+1. `VERSION`
+2. `CHANGELOG.md` top heading (`## [x.y.z] - YYYY-MM-DD`)
+3. `web/package.json` `"version"` field
+4. The git tag pushed after the commit (`git tag vX.Y.Z`)
+
+`main.go` reads `VERSION` at startup via `resolveVersion()` — do not hard-code
+a version string in code. Do not tag a release without matching entries in
+`CHANGELOG.md` and `web/package.json`; the release workflow will still produce
+artifacts, so the consistency check is manual.
+
 ## Disclaimer
 
 This project is intended for educational and research purposes only. Use at your own risk.
