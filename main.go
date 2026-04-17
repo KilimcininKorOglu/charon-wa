@@ -437,9 +437,9 @@ func main() {
 	admin.GET("/stats", handler.GetStats)
 
 	// =====================================================
-	// FILE MANAGER ROUTES (session required, delete = admin only)
+	// FILE MANAGER ROUTES (admin only — listing exposes all tenant directories)
 	// =====================================================
-	api.GET("/files", handler.ListFiles)
+	api.GET("/files", handler.ListFiles, customMiddleware.RequireAdmin)
 	api.DELETE("/files", handler.DeleteFile, customMiddleware.RequireAdmin)
 
 	// =====================================================
