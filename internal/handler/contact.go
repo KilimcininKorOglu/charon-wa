@@ -576,9 +576,9 @@ func exportToExcel(c echo.Context, contacts []ContactInfo, instanceID string) er
 		}
 
 		f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), i+1)
-		f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), contact.PhoneNumber)
-		f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), contact.Name)
-		f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), contact.JID)
+		f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), sanitizeCell(contact.PhoneNumber))
+		f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), sanitizeCell(contact.Name))
+		f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), sanitizeCell(contact.JID))
 		f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), contactType)
 	}
 
@@ -598,6 +598,21 @@ func exportToExcel(c echo.Context, contacts []ContactInfo, instanceID string) er
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 
 	return f.Write(c.Response().Writer)
+}
+
+// sanitizeCell prefixes values starting with spreadsheet-formula characters with
+// a single quote so CSV/XLSX viewers treat them as literal text instead of
+// executing them as formulas. This blocks CSV injection via malicious contact
+// names (CVE class: "CWE-1236: Improper Neutralization of Formula Elements").
+func sanitizeCell(v string) string {
+	if v == "" {
+		return v
+	}
+	switch v[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + v
+	}
+	return v
 }
 
 func exportToCSV(c echo.Context, contacts []ContactInfo, instanceID string) error {
@@ -623,9 +638,9 @@ func exportToCSV(c echo.Context, contacts []ContactInfo, instanceID string) erro
 
 		row := []string{
 			strconv.Itoa(i + 1),
-			contact.PhoneNumber,
-			contact.Name,
-			contact.JID,
+			sanitizeCell(contact.PhoneNumber),
+			sanitizeCell(contact.Name),
+			sanitizeCell(contact.JID),
 			contactType,
 		}
 
