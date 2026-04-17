@@ -224,6 +224,7 @@ func main() {
 		},
 	}))
 	e.Use(middleware.BodyLimit("100M"))
+	e.Use(middleware.Gzip())
 	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
 		XFrameOptions:         "DENY",
 		ContentSecurityPolicy: "frame-ancestors 'none'",
