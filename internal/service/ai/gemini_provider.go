@@ -4,11 +4,16 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"charon/config"
 
 	"google.golang.org/genai"
 )
+
+// geminiRequestTimeout caps the wall-clock for any single Gemini call so a hung
+// upstream cannot block auto-reply goroutines indefinitely.
+const geminiRequestTimeout = 30 * time.Second
 
 // ConversationMessage represents a single message in conversation history
 type ConversationMessage struct {
@@ -23,7 +28,8 @@ func GenerateReply(systemPrompt string, conversationHistory []ConversationMessag
 		return "", fmt.Errorf("Gemini API key not configured")
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), geminiRequestTimeout)
+	defer cancel()
 
 	// Create Gemini client
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
