@@ -231,14 +231,28 @@ func main() {
 		HSTSMaxAge:            31536000,
 	}))
 
-	// CORS allowed origins
+	// CORS allowed origins — validated strictly because AllowCredentials=true.
 	originsEnv := os.Getenv("CORS_ALLOW_ORIGINS")
 	if originsEnv == "" {
 		log.Fatal("CORS_ALLOW_ORIGINS must be set (comma-separated origins, e.g. http://localhost:5173)")
 	}
-	allowOrigins := strings.Split(originsEnv, ",")
-	for i, o := range allowOrigins {
-		allowOrigins[i] = strings.TrimSpace(o)
+	rawOrigins := strings.Split(originsEnv, ",")
+	allowOrigins := make([]string, 0, len(rawOrigins))
+	for _, o := range rawOrigins {
+		origin := strings.TrimSpace(o)
+		if origin == "" {
+			continue
+		}
+		if origin == "*" {
+			log.Fatalf("CORS_ALLOW_ORIGINS rejects wildcard '*' when cookies/credentials are allowed")
+		}
+		if !strings.HasPrefix(origin, "http://") && !strings.HasPrefix(origin, "https://") {
+			log.Fatalf("CORS_ALLOW_ORIGINS entry %q must include scheme (http:// or https://)", origin)
+		}
+		allowOrigins = append(allowOrigins, origin)
+	}
+	if len(allowOrigins) == 0 {
+		log.Fatal("CORS_ALLOW_ORIGINS yielded no valid origins after validation")
 	}
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: allowOrigins,
