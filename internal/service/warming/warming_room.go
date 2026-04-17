@@ -22,6 +22,35 @@ var (
 	ErrRoomSameInstance     = errors.New("sender and receiver cannot be the same instance")
 )
 
+// Gemini/AI safety bounds: temperatures outside 0..2 produce degenerate output
+// and token budgets outside 1..4096 either waste quota or drop completions.
+const (
+	aiTemperatureMin = 0.0
+	aiTemperatureMax = 2.0
+	aiMaxTokensMin   = 1
+	aiMaxTokensMax   = 4096
+)
+
+func clampTemperature(v float64) float64 {
+	if v < aiTemperatureMin {
+		return aiTemperatureMin
+	}
+	if v > aiTemperatureMax {
+		return aiTemperatureMax
+	}
+	return v
+}
+
+func clampMaxTokens(v int) int {
+	if v < aiMaxTokensMin {
+		return aiMaxTokensMin
+	}
+	if v > aiMaxTokensMax {
+		return aiMaxTokensMax
+	}
+	return v
+}
+
 // CreateWarmingRoomService creates new room with validation
 func CreateWarmingRoomService(req *warmingModel.CreateWarmingRoomRequest, userID int64, isAdmin bool) (*warmingModel.WarmingRoom, error) {
 	// Validate name
@@ -170,6 +199,14 @@ func CreateWarmingRoomService(req *warmingModel.CreateWarmingRoomRequest, userID
 		}
 	}
 
+	// Clamp AI parameters to safe bounds before persisting.
+	if req.AIEnabled {
+		req.AITemperature = clampTemperature(req.AITemperature)
+		if req.AIMaxTokens != 0 {
+			req.AIMaxTokens = clampMaxTokens(req.AIMaxTokens)
+		}
+	}
+
 	// Create in database
 	room, err := warmingModel.CreateWarmingRoom(req, userID)
 	if err != nil {
@@ -309,6 +346,16 @@ func UpdateWarmingRoomService(id string, req *warmingModel.UpdateWarmingRoomRequ
 	}
 	if req.IntervalMaxSeconds < req.IntervalMinSeconds {
 		return ErrRoomIntervalInvalid
+	}
+
+	// Clamp AI parameters to safe bounds before persisting.
+	if req.AITemperature != nil {
+		clamped := clampTemperature(*req.AITemperature)
+		req.AITemperature = &clamped
+	}
+	if req.AIMaxTokens != nil {
+		clamped := clampMaxTokens(*req.AIMaxTokens)
+		req.AIMaxTokens = &clamped
 	}
 
 	// Update in database
