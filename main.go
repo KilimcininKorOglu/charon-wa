@@ -345,7 +345,7 @@ func main() {
 
 	// New user authentication endpoints
 	e.POST("/login", handler.LoginUser, authLimiter)
-	e.POST("/logout", handler.LogoutUser)
+	e.POST("/logout", handler.LogoutUser, authLimiter)
 
 	// Static file serving for uploaded files — with security headers to prevent MIME sniffing
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
