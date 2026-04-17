@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.2.5] - 2026-04-17
+
+### Added
+- Server-side session infrastructure with DB-backed sessions and httpOnly cookies
+- Session-based authentication replacing JWT across handlers, middleware, and WebSocket
+- Failed login attempt tracking and 15-minute account lockout after 5 failures
+
+### Changed
+- Removed JWT token infrastructure (blacklist, refresh tokens, WS tickets)
+- Simplified Claims struct (no more jwt.RegisteredClaims embed)
+- Rebranded hermeswa to Charon (module, binary, env vars, webhook header)
+
+### Fixed
+- CI: disable CGO for Windows cross-compile
+- CI: upgrade zig to 0.15.2 for Go 1.26 Windows cross-compile compatibility
+- CI: add cgo build tag to webp image processor so worker builds without CGO
+- Move access token from localStorage to in-memory storage (pre-session era)
+- Implement one-time ticket exchange for WebSocket authentication (pre-session era)
+- Upgrade Go toolchain to 1.26.2 to patch stdlib CVEs
+- Upgrade vite to patch dev server vulnerabilities
+- Upgrade filippo.io/edwards25519 to v1.1.1
+- Upgrade google.golang.org/grpc to v1.79.3 to patch auth bypass
+- Upgrade golang.org/x/image to v0.38.0 to patch TIFF OOM
+- Pin GitHub Actions to full SHA hashes
+- Add minimal permissions block to CI workflow
+- Pin base images to specific version tags
+- Add private key exclusion patterns to .dockerignore
+- Run production container as non-root user
+- Hash refresh tokens with SHA-256 before database storage (pre-session era)
+- Filter WebSocket broadcasts by user instance ownership
+- Stop leaking internal error details in API responses
+- Strip webhook_secret from worker config API responses
+- Add global BodyLimit middleware to prevent memory exhaustion
+- Add stricter per-IP rate limit on auth endpoints
+- Configure explicit IPExtractor to prevent rate limit bypass
+- Add Echo Secure middleware with X-Frame-Options DENY and frame-ancestors
+- Remove webhook payload and signature from worker logs
+- Remove message content from warming worker production logs
+- Remove debug logging of full AI response text
+- Cap warming log pagination limit to 500
+- Remove deprecated rand.Seed call from conversation generator
+- Block viewer role from warming write endpoints
+- Enforce script ownership check on warming room update
+- Use atomic transaction for last-admin deletion check
+- Prevent admin self-demotion and last-admin role change
+
 ## [1.2.4] - 2026-04-04
 
 ### Fixed
