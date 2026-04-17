@@ -436,13 +436,12 @@ If `PHONE_COUNTRY_CODE` is empty, full international format is required with no 
 
 ### Worker Blast Outbox
 
-| Variable             | Description                            | Default                 | Example                   |
-|:---------------------|:---------------------------------------|:------------------------|:--------------------------|
-| `OUTBOX_API_BASEURL` | Base URL for WhatsApp API (worker)     | `http://localhost:2121` | `https://api.example.com` |
-| `OUTBOX_API_USER`    | Username for worker API authentication | --                      | `worker_user`             |
-| `OUTBOX_API_PASS`    | Password for worker API authentication | --                      | `worker_pass`             |
+| Variable              | Description                                | Default                 | Example                     |
+|:----------------------|:-------------------------------------------|:------------------------|:----------------------------|
+| `OUTBOX_API_BASEURL`  | Base URL of the main API (worker calls it) | `http://localhost:2121` | `https://api.example.com`   |
+| `WORKER_API_KEY`      | API key used by the worker on the `X-API-Key` header | --            | `hwa_...` (32 hex chars)    |
 
-The worker runs as a standalone binary and communicates with the main API to send messages. It reads configurations from `APP_DATABASE_URL` and processes messages from `OUTBOX_DATABASE_URL` (falls back to `APP_DATABASE_URL` if not set).
+The worker runs as a standalone binary and communicates with the main API to send messages. Authentication is API-key based: create an API key in the web UI (Profile → API Keys → Generate), then set `WORKER_API_KEY=hwa_...` in the worker's environment. The worker reads configurations from `APP_DATABASE_URL` and processes messages from `OUTBOX_DATABASE_URL` (falls back to `APP_DATABASE_URL` if not set). The worker can run on a separate host — only `APP_DATABASE_URL`, `OUTBOX_DATABASE_URL`, `OUTBOX_API_BASEURL`, and `WORKER_API_KEY` are required.
 
 ### Resource Limits
 
