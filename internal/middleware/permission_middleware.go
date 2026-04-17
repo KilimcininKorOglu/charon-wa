@@ -107,27 +107,25 @@ func RequirePhoneNumberAccess() echo.MiddlewareFunc {
 				})
 			}
 
-			// Get instance by phone number
+			// Get instance by phone number. Non-existence and permission-denied
+			// both return a uniform 403 so callers cannot enumerate which phone
+			// numbers exist on the platform.
 			inst, err := model.GetActiveInstanceByPhoneNumber(phoneNumber)
 			if err != nil {
-				return c.JSON(http.StatusNotFound, map[string]interface{}{
+				return c.JSON(http.StatusForbidden, map[string]interface{}{
 					"success": false,
-					"message": "No active instance found for this phone number",
+					"message": "You do not have access to this phone number",
 				})
 			}
 
 			// Check if user has permission to this instance
 			_, err = model.CheckUserInstancePermission(userClaims.UserID, inst.InstanceID)
 			if err != nil {
-				if err == model.ErrNoPermission {
-					return c.JSON(http.StatusForbidden, map[string]interface{}{
-						"success": false,
-						"message": "You do not have access to this phone number",
-					})
-				}
-				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+				// Treat permission errors and verification errors identically from
+				// the caller's perspective — log internally, expose uniform 403.
+				return c.JSON(http.StatusForbidden, map[string]interface{}{
 					"success": false,
-					"message": "Failed to verify instance access",
+					"message": "You do not have access to this phone number",
 				})
 			}
 
