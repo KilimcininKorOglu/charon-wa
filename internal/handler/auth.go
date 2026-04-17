@@ -184,14 +184,15 @@ func GetQR(c echo.Context) error {
 		if err != nil {
 			log.Printf("Failed to get QR channel for instance %s: %v", instanceID, err)
 
-			// Broadcast error via WebSocket
+			// Broadcast sanitized error — raw whatsmeow detail stays in the server log.
 			if service.Realtime != nil {
 				errorEvt := ws.WsEvent{
 					Event:     ws.EventInstanceError,
 					Timestamp: time.Now().UTC(),
 					Data: map[string]interface{}{
 						"instance_id": instanceID,
-						"error":       "Failed to get QR channel: " + err.Error(),
+						"code":        "qr_channel_failed",
+						"error":       "Could not start QR session. Please try again.",
 					},
 				}
 				service.Realtime.Publish(errorEvt)
@@ -210,7 +211,8 @@ func GetQR(c echo.Context) error {
 					Timestamp: time.Now().UTC(),
 					Data: map[string]interface{}{
 						"instance_id": instanceID,
-						"error":       "Failed to connect: " + err.Error(),
+						"code":        "connect_failed",
+						"error":       "Could not connect the instance. Please try again.",
 					},
 				}
 				service.Realtime.Publish(errorEvt)
