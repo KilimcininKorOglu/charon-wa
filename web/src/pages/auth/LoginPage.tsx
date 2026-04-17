@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { useAuthStore } from "../../stores/authStore"
 import { Button } from "../../components/ui/Button"
 import { Input } from "../../components/ui/Input"
@@ -62,13 +62,6 @@ export function LoginPage() {
             Initialize Session
           </Button>
         </form>
-
-        <p className="text-center text-xs text-cyber-green-muted mt-4">
-          No account?{" "}
-          <Link to="/register" className="text-cyber-green hover:underline">
-            Register
-          </Link>
-        </p>
       </div>
     </div>
   )

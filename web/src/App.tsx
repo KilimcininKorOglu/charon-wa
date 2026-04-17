@@ -5,7 +5,6 @@ import { useEffect } from "react"
 import { useAuthStore } from "./stores/authStore"
 import { Layout } from "./components/layout/Layout"
 import { LoginPage } from "./pages/auth/LoginPage"
-import { RegisterPage } from "./pages/auth/RegisterPage"
 import { DashboardPage } from "./pages/dashboard/DashboardPage"
 import { InstancesPage } from "./pages/instances/InstancesPage"
 import { MessagesPage } from "./pages/messages/MessagesPage"
@@ -56,7 +55,6 @@ export default function App() {
       <Routes>
         {/* Guest routes */}
         <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
-        <Route path="/register" element={<GuestRoute><RegisterPage /></GuestRoute>} />
 
         {/* Protected routes */}
         <Route
