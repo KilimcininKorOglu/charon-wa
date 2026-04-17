@@ -208,10 +208,9 @@ func calculateDelay(room *warmingModel.WarmingRoom) time.Duration {
 		return time.Duration(min) * time.Second
 	}
 
-	range_ := max - min + 1
-	randomOffset := time.Now().UnixNano() % int64(range_)
-	randomDelay := min + int(randomOffset)
-
+	// math/rand mirrors the pattern used by calculateNextRun; the wall-clock based
+	// modulo produced near-deterministic choices under bursty load.
+	randomDelay := min + rand.Intn(max-min+1)
 	return time.Duration(randomDelay) * time.Second
 }
 
