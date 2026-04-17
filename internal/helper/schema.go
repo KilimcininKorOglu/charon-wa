@@ -756,8 +756,8 @@ func InitCustomSchema() {
 
 	// Ensure table_id exists in outbox (for older installations)
 	addOutboxColumnLogic := `
-		DO $$ 
-		BEGIN 
+		DO $$
+		BEGIN
 			BEGIN
 				ALTER TABLE outbox ADD COLUMN table_id VARCHAR(100);
 			EXCEPTION
@@ -766,6 +766,10 @@ func InitCustomSchema() {
 		END $$;
 	`
 	_, _ = db.Exec(addOutboxColumnLogic)
+
+	// Ensure claimed_at exists so a reaper can recycle status=3 rows whose worker crashed mid-cycle.
+	_, _ = db.Exec(`ALTER TABLE outbox ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP WITH TIME ZONE`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_outbox_claimed_at ON outbox(claimed_at) WHERE status = 3`)
 
 	// ─── API KEYS TABLE ─────────────────────────────────
 	apiKeysSchema := `

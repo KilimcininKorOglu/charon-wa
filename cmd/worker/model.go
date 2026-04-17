@@ -106,7 +106,7 @@ func ClaimPendingOutbox(ctx context.Context, applications []string, clientID int
 
 	query := fmt.Sprintf(`
 		UPDATE outbox
-		SET status = 3
+		SET status = 3, claimed_at = NOW()
 		WHERE id_outbox = (
 			SELECT id_outbox
 			FROM outbox
@@ -127,10 +127,27 @@ func ClaimPendingOutbox(ctx context.Context, applications []string, clientID int
 	return &msg, nil
 }
 
+// ReapStaleClaims requeues any outbox rows stuck in status=3 for longer than
+// maxAge (typically 10 minutes) so crash-left messages self-heal. Returns
+// the number of rows that were returned to status=0.
+func ReapStaleClaims(ctx context.Context, maxAge time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-maxAge)
+	res, err := OutboxDB.ExecContext(ctx, `
+		UPDATE outbox
+		SET status = 0, claimed_at = NULL
+		WHERE status = 3 AND (claimed_at IS NULL OR claimed_at < $1)
+	`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
 func UpdateOutboxSuccess(ctx context.Context, id int64, fromNumber string) error {
 	query := `
-		UPDATE outbox 
-		SET status = 1, sendingDateTime = NOW(), from_number = $1, msg_error = NULL 
+		UPDATE outbox
+		SET status = 1, sendingDateTime = NOW(), from_number = $1, msg_error = NULL, claimed_at = NULL
 		WHERE id_outbox = $2
 	`
 	res, err := OutboxDB.ExecContext(ctx, query, fromNumber, id)
@@ -146,8 +163,8 @@ func UpdateOutboxSuccess(ctx context.Context, id int64, fromNumber string) error
 
 func UpdateOutboxFailed(ctx context.Context, id int64, errorMsg string) error {
 	query := `
-		UPDATE outbox 
-		SET status = 2, msg_error = $1, error_count = error_count + 1
+		UPDATE outbox
+		SET status = 2, msg_error = $1, error_count = error_count + 1, claimed_at = NULL
 		WHERE id_outbox = $2
 	`
 	res, err := OutboxDB.ExecContext(ctx, query, errorMsg, id)

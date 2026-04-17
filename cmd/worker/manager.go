@@ -29,18 +29,34 @@ func NewWorkerManager(client *CharonClient) *WorkerManager {
 func (m *WorkerManager) Start() {
 	log.Println("Worker Blast Outbox Manager started. Polling for configurations...")
 
+	// Sweep any pre-existing orphaned `status=3` rows on startup so crash-left
+	// messages from the last run are requeued immediately.
+	if n, err := ReapStaleClaims(m.ctx, 10*time.Minute); err != nil {
+		log.Printf("Startup reaper error: %v", err)
+	} else if n > 0 {
+		log.Printf("Startup reaper requeued %d stale outbox rows", n)
+	}
+
 	// Initial load
 	m.reloadConfigs()
 
 	// Periodic reload every 30 seconds
 	ticker := time.NewTicker(30 * time.Second)
+	reaper := time.NewTicker(60 * time.Second)
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
 				m.reloadConfigs()
+			case <-reaper.C:
+				if n, err := ReapStaleClaims(m.ctx, 10*time.Minute); err != nil {
+					log.Printf("Reaper error: %v", err)
+				} else if n > 0 {
+					log.Printf("Reaper requeued %d stale outbox rows", n)
+				}
 			case <-m.ctx.Done():
 				ticker.Stop()
+				reaper.Stop()
 				return
 			}
 		}
