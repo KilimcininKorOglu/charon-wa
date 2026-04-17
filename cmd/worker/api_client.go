@@ -16,14 +16,8 @@ type InstanceInfo struct {
 }
 
 type CharonClient struct {
-	BaseURL      string
-	Username     string
-	Password     string
-	AccessToken  string
-	RefreshToken string
-	ExpiresAt    time.Time
-
-	authMu sync.Mutex // protects AccessToken, RefreshToken, ExpiresAt
+	BaseURL string
+	APIKey  string
 
 	// Caching instances to reduce API load
 	mu                sync.RWMutex
@@ -41,9 +35,7 @@ type APIResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 	Data    struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		Instances    []struct {
+		Instances []struct {
 			InstanceID  string `json:"instanceId"`
 			PhoneNumber string `json:"phoneNumber"`
 			Used        bool   `json:"used"`
@@ -53,97 +45,20 @@ type APIResponse struct {
 	} `json:"data"`
 }
 
-func NewCharonClient(baseURL, username, password string) *CharonClient {
+func NewCharonClient(baseURL, apiKey string) *CharonClient {
 	return &CharonClient{
-		BaseURL:  baseURL,
-		Username: username,
-		Password: password,
+		BaseURL: baseURL,
+		APIKey:  apiKey,
 	}
 }
 
-func (c *CharonClient) EnsureAuth() error {
-	c.authMu.Lock()
-	defer c.authMu.Unlock()
-
-	if c.AccessToken == "" || time.Now().After(c.ExpiresAt) {
-		if c.RefreshToken != "" {
-			err := c.refresh()
-			if err == nil {
-				return nil
-			}
-		}
-		return c.login()
-	}
-	return nil
-}
-
-func (c *CharonClient) login() error {
-	payload, _ := json.Marshal(map[string]string{
-		"username": c.Username,
-		"password": c.Password,
-	})
-
-	resp, err := http.Post(c.BaseURL+"/login", "application/json", bytes.NewBuffer(payload))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	var res APIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		return err
-	}
-
-	if !res.Success {
-		return fmt.Errorf("login failed: %s", res.Message)
-	}
-
-	c.AccessToken = res.Data.AccessToken
-	c.RefreshToken = res.Data.RefreshToken
-	c.ExpiresAt = time.Now().Add(50 * time.Minute)
-
-	return nil
-}
-
-func (c *CharonClient) refresh() error {
-	payload, _ := json.Marshal(map[string]string{
-		"refresh_token": c.RefreshToken,
-	})
-
-	resp, err := http.Post(c.BaseURL+"/refresh", "application/json", bytes.NewBuffer(payload))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	var res APIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		return err
-	}
-
-	if !res.Success {
-		return fmt.Errorf("refresh failed: %s", res.Message)
-	}
-
-	c.AccessToken = res.Data.AccessToken
-	if res.Data.RefreshToken != "" {
-		c.RefreshToken = res.Data.RefreshToken
-	}
-	c.ExpiresAt = time.Now().Add(50 * time.Minute)
-
-	return nil
-}
-
-func (c *CharonClient) getToken() string {
-	c.authMu.Lock()
-	defer c.authMu.Unlock()
-	return c.AccessToken
+func (c *CharonClient) setAuthHeader(req *http.Request) {
+	req.Header.Set("X-API-Key", c.APIKey)
 }
 
 func (c *CharonClient) GetInstances(circle string) ([]InstanceInfo, error) {
 	c.mu.RLock()
 	if c.allInstancesCache != nil && time.Now().Before(c.cacheExpiry) {
-		// Use cache
 		var instances []InstanceInfo
 		for _, inst := range c.allInstancesCache {
 			if inst.Used && inst.Circle == circle {
@@ -158,13 +73,8 @@ func (c *CharonClient) GetInstances(circle string) ([]InstanceInfo, error) {
 	}
 	c.mu.RUnlock()
 
-	// Cache expired or empty, fetch from API
-	if err := c.EnsureAuth(); err != nil {
-		return nil, err
-	}
-
 	req, _ := http.NewRequest("GET", c.BaseURL+"/api/instances?all=true", nil)
-	req.Header.Set("Authorization", "Bearer "+c.getToken())
+	c.setAuthHeader(req)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -178,15 +88,13 @@ func (c *CharonClient) GetInstances(circle string) ([]InstanceInfo, error) {
 		return nil, err
 	}
 
-	// Update cache
 	c.mu.Lock()
 	c.allInstancesCache = res.Data.Instances
-	c.cacheExpiry = time.Now().Add(1 * time.Minute) // Cache for 1 minute
+	c.cacheExpiry = time.Now().Add(1 * time.Minute)
 	c.mu.Unlock()
 
 	var instances []InstanceInfo
 	for _, inst := range res.Data.Instances {
-		// Filter by circle and used status (BUT NOT online status to prevent spam)
 		if inst.Used && inst.Circle == circle {
 			instances = append(instances, InstanceInfo{
 				InstanceID:  inst.InstanceID,
@@ -199,10 +107,6 @@ func (c *CharonClient) GetInstances(circle string) ([]InstanceInfo, error) {
 }
 
 func (c *CharonClient) SendMessage(instanceID, to, message string) (bool, string, error) {
-	if err := c.EnsureAuth(); err != nil {
-		return false, "", err
-	}
-
 	payload, _ := json.Marshal(map[string]string{
 		"to":      to,
 		"message": message,
@@ -210,7 +114,7 @@ func (c *CharonClient) SendMessage(instanceID, to, message string) (bool, string
 
 	url := fmt.Sprintf("%s/api/send/%s", c.BaseURL, instanceID)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", "Bearer "+c.getToken())
+	c.setAuthHeader(req)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -230,10 +134,6 @@ func (c *CharonClient) SendMessage(instanceID, to, message string) (bool, string
 }
 
 func (c *CharonClient) SendGroupMessage(instanceID, groupID, message string) (bool, string, error) {
-	if err := c.EnsureAuth(); err != nil {
-		return false, "", err
-	}
-
 	payload, _ := json.Marshal(map[string]string{
 		"message":  message,
 		"groupJid": groupID,
@@ -241,7 +141,7 @@ func (c *CharonClient) SendGroupMessage(instanceID, groupID, message string) (bo
 
 	url := fmt.Sprintf("%s/api/send-group/%s", c.BaseURL, instanceID)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", "Bearer "+c.getToken())
+	c.setAuthHeader(req)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -261,10 +161,6 @@ func (c *CharonClient) SendGroupMessage(instanceID, groupID, message string) (bo
 }
 
 func (c *CharonClient) SendMediaURL(instanceID, to, mediaURL, caption string) (bool, string, error) {
-	if err := c.EnsureAuth(); err != nil {
-		return false, "", err
-	}
-
 	payload, _ := json.Marshal(map[string]string{
 		"to":       to,
 		"mediaUrl": mediaURL,
@@ -273,7 +169,7 @@ func (c *CharonClient) SendMediaURL(instanceID, to, mediaURL, caption string) (b
 
 	url := fmt.Sprintf("%s/api/send/%s/media-url", c.BaseURL, instanceID)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", "Bearer "+c.getToken())
+	c.setAuthHeader(req)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -293,10 +189,6 @@ func (c *CharonClient) SendMediaURL(instanceID, to, mediaURL, caption string) (b
 }
 
 func (c *CharonClient) SendGroupMediaURL(instanceID, groupID, mediaURL, caption string) (bool, string, error) {
-	if err := c.EnsureAuth(); err != nil {
-		return false, "", err
-	}
-
 	payload, _ := json.Marshal(map[string]string{
 		"groupJid": groupID,
 		"mediaUrl": mediaURL,
@@ -305,7 +197,7 @@ func (c *CharonClient) SendGroupMediaURL(instanceID, groupID, mediaURL, caption 
 
 	url := fmt.Sprintf("%s/api/send-group/%s/media-url", c.BaseURL, instanceID)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	req.Header.Set("Authorization", "Bearer "+c.getToken())
+	c.setAuthHeader(req)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}

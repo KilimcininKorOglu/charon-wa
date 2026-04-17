@@ -71,14 +71,13 @@ func main() {
 		apiBaseURL = "http://localhost:" + port
 	}
 
-	apiUser := os.Getenv("OUTBOX_API_USER")
-	apiPass := os.Getenv("OUTBOX_API_PASS")
-	if apiUser == "" || apiPass == "" {
-		log.Fatal("OUTBOX_API_USER or OUTBOX_API_PASS is not set")
+	apiKey := os.Getenv("WORKER_API_KEY")
+	if apiKey == "" {
+		log.Fatal("WORKER_API_KEY is not set (create an admin API key via the web UI)")
 	}
 
 	// 4. Initialize API Client
-	client := NewCharonClient(apiBaseURL, apiUser, apiPass)
+	client := NewCharonClient(apiBaseURL, apiKey)
 
 	// 5. Start Worker Manager
 	manager := NewWorkerManager(client)

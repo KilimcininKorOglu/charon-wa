@@ -280,8 +280,8 @@ func main() {
 		})
 	})
 
-	// Route group requiring session authentication
-	api := e.Group("/api", customMiddleware.SessionAuthMiddleware())
+	// Route group accepting session cookie (UI) or X-API-Key (outbox worker, external integrations)
+	api := e.Group("/api", customMiddleware.SessionOrAPIKeyMiddleware())
 
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
 		code := http.StatusInternalServerError
