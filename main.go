@@ -120,7 +120,7 @@ func main() {
 	config.GeminiAPIKey = os.Getenv("GEMINI_API_KEY")
 	config.GeminiDefaultModel = os.Getenv("GEMINI_DEFAULT_MODEL")
 	if config.GeminiDefaultModel == "" {
-		config.GeminiDefaultModel = "gemini-1.5-flash"
+		config.GeminiDefaultModel = "gemini-flash-latest"
 	}
 
 	if histLimit := os.Getenv("AI_CONVERSATION_HISTORY_LIMIT"); histLimit != "" {

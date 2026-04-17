@@ -294,7 +294,7 @@ func InitCustomSchema() {
 		ALTER TABLE warming_rooms 
 		ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN DEFAULT FALSE,
 		ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(20) DEFAULT 'gemini',
-		ADD COLUMN IF NOT EXISTS ai_model VARCHAR(50) DEFAULT 'gemini-1.5-flash',
+		ADD COLUMN IF NOT EXISTS ai_model VARCHAR(50) DEFAULT 'gemini-flash-latest',
 		ADD COLUMN IF NOT EXISTS ai_system_prompt TEXT DEFAULT 'You are a helpful customer service assistant. Be friendly, concise, and professional.',
 		ADD COLUMN IF NOT EXISTS ai_temperature DECIMAL(3,2) DEFAULT 0.7,
 		ADD COLUMN IF NOT EXISTS ai_max_tokens INT DEFAULT 150,

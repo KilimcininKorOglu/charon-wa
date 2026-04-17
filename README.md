@@ -429,7 +429,7 @@ If `PHONE_COUNTRY_CODE` is empty, full international format is required with no 
 | `AI_ENABLED`                    | Enable AI-powered features       | `false`            | `true`       |
 | `AI_DEFAULT_PROVIDER`           | AI provider                      | `gemini`           | `openai`     |
 | `GEMINI_API_KEY`                | Google Gemini API Key            | --                 | `AIzaSy...`  |
-| `GEMINI_DEFAULT_MODEL`          | Default Gemini model             | `gemini-1.5-flash` | `gemini-pro` |
+| `GEMINI_DEFAULT_MODEL`          | Default Gemini model             | `gemini-flash-latest` | `gemini-pro` |
 | `AI_CONVERSATION_HISTORY_LIMIT` | Previous messages for context    | `10`               | `20`         |
 | `AI_DEFAULT_TEMPERATURE`        | Response randomness (0.0 to 1.0) | `0.7`              | `0.5`        |
 | `AI_DEFAULT_MAX_TOKENS`         | Max tokens for AI response       | `150`              | `300`        |
