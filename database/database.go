@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	Container    *sqlstore.Container
-	WhatsmeowDB  *sql.DB
+	Container   *sqlstore.Container
+	WhatsmeowDB *sql.DB
 )
 
 func InitWhatsmeow(dbURL string) {

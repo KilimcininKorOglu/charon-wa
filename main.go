@@ -140,7 +140,7 @@ func main() {
 	}
 
 	if temp := os.Getenv("AI_DEFAULT_TEMPERATURE"); temp != "" {
-		if t, err := strconv.ParseFloat(temp, 64); err == nil && t >= 0 && t <= 1 {
+		if t, err := strconv.ParseFloat(temp, 64); err == nil && t >= 0 && t <= 2 {
 			config.AIDefaultTemperature = t
 		} else {
 			config.AIDefaultTemperature = 0.7
@@ -161,6 +161,9 @@ func main() {
 
 	log.Printf("feature flags -> websocket_incoming_msg: %v, webhook: %v, warming_auto_reply: %v, ai_enabled: %v",
 		config.EnableWebsocketIncomingMessage, config.EnableWebhook, config.WarmingAutoReplyEnabled, config.AIEnabled)
+
+	// Initialize upload configuration from env vars
+	helper.InitUploadConfig()
 
 	// Initialize session-based authentication
 	service.InitSessionConfig()
@@ -366,7 +369,7 @@ func main() {
 
 	// WebSocket and health check
 	e.GET("/ws", handler.WebSocketHandler(hub)) // WebSocket listener (Gorilla)
-	e.GET("/", func(c echo.Context) error { // Health check
+	e.GET("/", func(c echo.Context) error {     // Health check
 		ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
 		defer cancel()
 

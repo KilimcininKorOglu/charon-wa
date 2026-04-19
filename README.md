@@ -386,15 +386,13 @@ Configure these in your `.env` file.
 
 ### Avatar Upload Configuration
 
-| Variable               | Description                      | Default                | Example          |
-|:-----------------------|:---------------------------------|:-----------------------|:-----------------|
-| `UPLOAD_DIR`           | Directory for uploaded files     | `./uploads`            | `/data/uploads`  |
-| `MAX_AVATAR_SIZE_MB`   | Maximum avatar file size (MB)    | `1`                    | `2`              |
-| `MAX_AVATAR_SIZE_KB`   | Maximum avatar size (KB)         | `500`                  | `1024`           |
-| `ALLOWED_AVATAR_TYPES` | Allowed image formats            | `jpg,jpeg,png,webp`   | `jpg,png`        |
-| `AVATAR_OUTPUT_FORMAT` | Output format after processing   | `webp`                 | `png`            |
-| `AVATAR_MAX_DIMENSION` | Maximum dimension in pixels      | `1024`                 | `2048`           |
-| `AVATAR_MIN_DIMENSION` | Minimum dimension in pixels      | `100`                  | `50`             |
+| Variable              | Description                          | Default              | Example          |
+|:----------------------|:-------------------------------------|:---------------------|:-----------------|
+| `UPLOAD_DIR`          | Base directory for uploaded files    | `./uploads`          | `/data/uploads`  |
+| `MAX_AVATAR_SIZE_MB`  | Maximum avatar file size (MB)        | `1`                  | `2`              |
+| `ALLOWED_AVATAR_TYPES`| Comma-separated allowed extensions   | `jpg,jpeg,png,webp,ico` | `jpg,png`     |
+
+Avatar output format is always WebP (hardcoded in `GenerateSecureFilename`).
 
 ### Phone Number Format
 
@@ -433,8 +431,8 @@ If `PHONE_COUNTRY_CODE` is empty, full international format is required with no 
 | `WARMING_WORKER_INTERVAL_SECONDS` | Interval between worker checks          | `5`     | `10`    |
 | `WARMING_AUTO_REPLY_ENABLED`      | Enable AI/Auto-reply in warming rooms   | `false` | `true`  |
 | `WARMING_AUTO_REPLY_COOLDOWN`     | Cooldown between auto-replies (seconds) | `60`    | `10`    |
-| `DEFAULT_REPLY_DELAY_MIN`         | Min delay before auto-reply (seconds)   | `10`    | `5`     |
-| `DEFAULT_REPLY_DELAY_MAX`         | Max delay before auto-reply (seconds)   | `60`    | `30`    |
+
+Reply delays (`replyDelayMin` / `replyDelayMax`) are per-room settings configured via the Room create/update API, not environment variables. Defaults: 10 / 60 seconds.
 
 ### AI Configuration (Gemini)
 
@@ -445,7 +443,7 @@ If `PHONE_COUNTRY_CODE` is empty, full international format is required with no 
 | `GEMINI_API_KEY`                | Google Gemini API Key            | --                 | `AIzaSy...`  |
 | `GEMINI_DEFAULT_MODEL`          | Default Gemini model             | `gemini-flash-latest` | `gemini-pro` |
 | `AI_CONVERSATION_HISTORY_LIMIT` | Previous messages for context    | `10`               | `20`         |
-| `AI_DEFAULT_TEMPERATURE`        | Response randomness (0.0 to 1.0) | `0.7`              | `0.5`        |
+| `AI_DEFAULT_TEMPERATURE`        | Response randomness (0.0 to 2.0) | `0.7`              | `0.5`        |
 | `AI_DEFAULT_MAX_TOKENS`         | Max tokens for AI response       | `150`              | `300`        |
 
 ### Worker Blast Outbox

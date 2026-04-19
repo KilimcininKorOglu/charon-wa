@@ -107,4 +107,3 @@ func AuthenticateUser(username, password string) (*model.User, error) {
 
 	return user, nil
 }
-

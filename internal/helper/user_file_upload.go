@@ -8,23 +8,63 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// File upload configuration
-const (
+// File upload configuration — populated once at startup via InitUploadConfig().
+var (
 	MaxAvatarSizeMB    = 1
-	MaxAvatarSizeBytes = MaxAvatarSizeMB * 1024 * 1024
+	MaxAvatarSizeBytes = int64(MaxAvatarSizeMB) * 1024 * 1024
 	UploadDir          = "./uploads"
 	AvatarDir          = "./uploads/avatars"
 	SystemDir          = "./uploads/system"
-)
 
-var (
 	AllowedExtensions = []string{".jpg", ".jpeg", ".png", ".webp", ".ico"}
 	AllowedMIMETypes  = []string{"image/jpeg", "image/png", "image/webp", "image/x-icon", "image/vnd.microsoft.icon"}
 )
+
+var extensionToMIME = map[string][]string{
+	".jpg":  {"image/jpeg"},
+	".jpeg": {"image/jpeg"},
+	".png":  {"image/png"},
+	".webp": {"image/webp"},
+	".ico":  {"image/x-icon", "image/vnd.microsoft.icon"},
+}
+
+// InitUploadConfig reads upload-related environment variables once at startup.
+func InitUploadConfig() {
+	if v := os.Getenv("UPLOAD_DIR"); v != "" {
+		UploadDir = v
+		AvatarDir = filepath.Join(v, "avatars")
+		SystemDir = filepath.Join(v, "system")
+	}
+
+	if v := os.Getenv("MAX_AVATAR_SIZE_MB"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			MaxAvatarSizeMB = n
+			MaxAvatarSizeBytes = int64(n) * 1024 * 1024
+		}
+	}
+
+	if v := os.Getenv("ALLOWED_AVATAR_TYPES"); v != "" {
+		parts := strings.Split(v, ",")
+		exts := make([]string, 0, len(parts))
+		mimes := make([]string, 0, len(parts)*2)
+		for _, p := range parts {
+			ext := "." + strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(p), "."))
+			if m, ok := extensionToMIME[ext]; ok {
+				exts = append(exts, ext)
+				mimes = append(mimes, m...)
+			}
+		}
+		if len(exts) > 0 {
+			AllowedExtensions = exts
+			AllowedMIMETypes = mimes
+		}
+	}
+}
 
 // Magic bytes for file type detection
 var magicBytes = map[string][]byte{

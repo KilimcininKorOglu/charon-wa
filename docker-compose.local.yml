@@ -46,11 +46,7 @@ services:
       MAX_FILE_SIZE_DOCUMENT_MB: "100"
       UPLOAD_DIR: ./uploads
       MAX_AVATAR_SIZE_MB: "1"
-      MAX_AVATAR_SIZE_KB: "500"
-      ALLOWED_AVATAR_TYPES: jpg,jpeg,png,webp
-      AVATAR_OUTPUT_FORMAT: webp
-      AVATAR_MAX_DIMENSION: "1024"
-      AVATAR_MIN_DIMENSION: "100"
+      ALLOWED_AVATAR_TYPES: jpg,jpeg,png,webp,ico
       WARMING_WORKER_ENABLED: "false"
       WARMING_WORKER_INTERVAL_SECONDS: "5"
       WARMING_AUTO_REPLY_ENABLED: "false"
@@ -62,8 +58,6 @@ services:
       AI_CONVERSATION_HISTORY_LIMIT: "10"
       AI_DEFAULT_TEMPERATURE: "0.7"
       AI_DEFAULT_MAX_TOKENS: "150"
-      DEFAULT_REPLY_DELAY_MIN: "10"
-      DEFAULT_REPLY_DELAY_MAX: "60"
     volumes:
       - .:/app
       - ./docker-data/go-mod:/go/pkg/mod
