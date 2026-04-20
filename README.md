@@ -310,11 +310,11 @@ All volumes bind-mount to `docker-data/` directory. The API server uses `air` fo
 # Traefik proxy handles domain routing and SSL
 ```
 
-| Service   | Description                                           |
-|:----------|:------------------------------------------------------|
-| `db-init` | One-shot container that creates required databases    |
-| `api`     | Production API server (built from Dockerfile)         |
-| `worker`  | Blast outbox worker (compiled binary, same image)     |
+| Service   | Description                                        |
+|:----------|:---------------------------------------------------|
+| `db-init` | One-shot container that creates required databases |
+| `api`     | Production API server (built from Dockerfile)      |
+| `worker`  | Blast outbox worker (compiled binary, same image)  |
 
 ---
 
@@ -356,41 +356,41 @@ Configure these in your `.env` file.
 
 ### Core Configuration
 
-| Variable              | Description                                     | Default | Example                                      |
-|:----------------------|:------------------------------------------------|:--------|:---------------------------------------------|
-| `DATABASE_URL`        | PostgreSQL URL for whatsmeow session storage (recommend `?sslmode=require` in production) | --      | `postgres://user:pass@localhost:5432/db?sslmode=require` |
-| `APP_DATABASE_URL`    | PostgreSQL URL for application data             | --      | `postgres://user:pass@localhost:5432/app?sslmode=require` |
-| `OUTBOX_DATABASE_URL` | PostgreSQL URL for outbox (optional)            | --      | `postgres://user:pass@localhost:5432/outbox?sslmode=require` |
-| `PORT`                | Server listening port                           | `2121`  | `3000`                                       |
-| `BASEURL`             | Public host/IP of the server (without protocol) | --      | `127.0.0.1`                                  |
-| `CORS_ALLOW_ORIGINS`  | Comma-separated allowed origins (required). **Wildcards `*` and scheme-less entries are rejected on startup** | --      | `http://localhost:3000,https://app.example.com` |
-| `BEHIND_PROXY`        | Enable `X-Real-IP` extraction behind reverse proxy | `false` | `true`                                    |
+| Variable              | Description                                                                                                   | Default | Example                                                      |
+|:----------------------|:--------------------------------------------------------------------------------------------------------------|:--------|:-------------------------------------------------------------|
+| `DATABASE_URL`        | PostgreSQL URL for whatsmeow session storage (recommend `?sslmode=require` in production)                     | --      | `postgres://user:pass@localhost:5432/db?sslmode=require`     |
+| `APP_DATABASE_URL`    | PostgreSQL URL for application data                                                                           | --      | `postgres://user:pass@localhost:5432/app?sslmode=require`    |
+| `OUTBOX_DATABASE_URL` | PostgreSQL URL for outbox (optional)                                                                          | --      | `postgres://user:pass@localhost:5432/outbox?sslmode=require` |
+| `PORT`                | Server listening port                                                                                         | `2121`  | `3000`                                                       |
+| `BASEURL`             | Public host/IP of the server (without protocol)                                                               | --      | `127.0.0.1`                                                  |
+| `CORS_ALLOW_ORIGINS`  | Comma-separated allowed origins (required). **Wildcards `*` and scheme-less entries are rejected on startup** | --      | `http://localhost:3000,https://app.example.com`              |
+| `BEHIND_PROXY`        | Enable `X-Real-IP` extraction behind reverse proxy                                                            | `false` | `true`                                                       |
 
 ### Features
 
-| Variable                                 | Description                                 | Default | Example |
-|:-----------------------------------------|:--------------------------------------------|:--------|:--------|
-| `CHARON_ENABLE_WEBSOCKET_INCOMING_MSG` | Enable incoming message WebSocket broadcast | `false` | `true`  |
-| `CHARON_ENABLE_WEBHOOK`                | Enable global incoming message webhooks     | `false` | `true`  |
-| `CHARON_TYPING_DELAY_MIN`              | Minimum typing simulation delay (seconds)   | `1`     | `2`     |
-| `CHARON_TYPING_DELAY_MAX`              | Maximum typing simulation delay (seconds)   | `3`     | `5`     |
-| `PHONE_COUNTRY_CODE`                     | Country code for phone number formatting    | --      | `90`    |
-| `ALLOW_9_DIGIT_PHONE_NUMBER`             | Skip IsOnWhatsApp check for leading-0, no-cc-prefix, or <10 digit numbers | `false` | `true`  |
+| Variable                               | Description                                                               | Default | Example |
+|:---------------------------------------|:--------------------------------------------------------------------------|:--------|:--------|
+| `CHARON_ENABLE_WEBSOCKET_INCOMING_MSG` | Enable incoming message WebSocket broadcast                               | `false` | `true`  |
+| `CHARON_ENABLE_WEBHOOK`                | Enable global incoming message webhooks                                   | `false` | `true`  |
+| `CHARON_TYPING_DELAY_MIN`              | Minimum typing simulation delay (seconds)                                 | `1`     | `2`     |
+| `CHARON_TYPING_DELAY_MAX`              | Maximum typing simulation delay (seconds)                                 | `3`     | `5`     |
+| `PHONE_COUNTRY_CODE`                   | Country code for phone number formatting                                  | --      | `90`    |
+| `ALLOW_9_DIGIT_PHONE_NUMBER`           | Skip IsOnWhatsApp check for leading-0, no-cc-prefix, or <10 digit numbers | `false` | `true`  |
 
 ### Session Configuration
 
-| Variable         | Description                                            | Default | Example |
-|:-----------------|:-------------------------------------------------------|:--------|:--------|
-| `SESSION_EXPIRY` | Session validity duration (sliding, extended per request) | `168h`  | `720h`  |
-| `COOKIE_SECURE`  | Set `Secure` flag on session cookie (disable for localhost dev) | `true` | `false` |
+| Variable         | Description                                                     | Default | Example |
+|:-----------------|:----------------------------------------------------------------|:--------|:--------|
+| `SESSION_EXPIRY` | Session validity duration (sliding, extended per request)       | `168h`  | `720h`  |
+| `COOKIE_SECURE`  | Set `Secure` flag on session cookie (disable for localhost dev) | `true`  | `false` |
 
 ### Avatar Upload Configuration
 
-| Variable              | Description                          | Default              | Example          |
-|:----------------------|:-------------------------------------|:---------------------|:-----------------|
-| `UPLOAD_DIR`          | Base directory for uploaded files    | `./uploads`          | `/data/uploads`  |
-| `MAX_AVATAR_SIZE_MB`  | Maximum avatar file size (MB)        | `1`                  | `2`              |
-| `ALLOWED_AVATAR_TYPES`| Comma-separated allowed extensions   | `jpg,jpeg,png,webp,ico` | `jpg,png`     |
+| Variable               | Description                        | Default                 | Example         |
+|:-----------------------|:-----------------------------------|:------------------------|:----------------|
+| `UPLOAD_DIR`           | Base directory for uploaded files  | `./uploads`             | `/data/uploads` |
+| `MAX_AVATAR_SIZE_MB`   | Maximum avatar file size (MB)      | `1`                     | `2`             |
+| `ALLOWED_AVATAR_TYPES` | Comma-separated allowed extensions | `jpg,jpeg,png,webp,ico` | `jpg,png`       |
 
 Avatar output format is always WebP (hardcoded in `GenerateSecureFilename`).
 
@@ -398,11 +398,11 @@ Avatar output format is always WebP (hardcoded in `GenerateSecureFilename`).
 
 Phone numbers are automatically formatted using the `PHONE_COUNTRY_CODE` environment variable:
 
-| Format | Conversion |
-|:-------|:-----------|
-| `0XXXXXXXXX` | `PHONE_COUNTRY_CODE` prefix prepended (e.g. `0555...` → `90555...`) |
-| `XXXXXXXXX` (no prefix) | `PHONE_COUNTRY_CODE` prefix prepended |
-| Country code already present | Passed through unchanged |
+| Format                       | Conversion                                                          |
+|:-----------------------------|:--------------------------------------------------------------------|
+| `0XXXXXXXXX`                 | `PHONE_COUNTRY_CODE` prefix prepended (e.g. `0555...` → `90555...`) |
+| `XXXXXXXXX` (no prefix)      | `PHONE_COUNTRY_CODE` prefix prepended                               |
+| Country code already present | Passed through unchanged                                            |
 
 If `PHONE_COUNTRY_CODE` is empty, full international format is required with no auto-conversion.
 
@@ -436,31 +436,31 @@ Reply delays (`replyDelayMin` / `replyDelayMax`) are per-room settings configure
 
 ### AI Configuration (Gemini)
 
-| Variable                        | Description                      | Default            | Example      |
-|:--------------------------------|:---------------------------------|:-------------------|:-------------|
-| `AI_ENABLED`                    | Enable AI-powered features       | `false`            | `true`       |
-| `AI_DEFAULT_PROVIDER`           | AI provider                      | `gemini`           | `openai`     |
-| `GEMINI_API_KEY`                | Google Gemini API Key            | --                 | `AIzaSy...`  |
+| Variable                        | Description                      | Default               | Example      |
+|:--------------------------------|:---------------------------------|:----------------------|:-------------|
+| `AI_ENABLED`                    | Enable AI-powered features       | `false`               | `true`       |
+| `AI_DEFAULT_PROVIDER`           | AI provider                      | `gemini`              | `openai`     |
+| `GEMINI_API_KEY`                | Google Gemini API Key            | --                    | `AIzaSy...`  |
 | `GEMINI_DEFAULT_MODEL`          | Default Gemini model             | `gemini-flash-latest` | `gemini-pro` |
-| `AI_CONVERSATION_HISTORY_LIMIT` | Previous messages for context    | `10`               | `20`         |
-| `AI_DEFAULT_TEMPERATURE`        | Response randomness (0.0 to 2.0) | `0.7`              | `0.5`        |
-| `AI_DEFAULT_MAX_TOKENS`         | Max tokens for AI response       | `150`              | `300`        |
+| `AI_CONVERSATION_HISTORY_LIMIT` | Previous messages for context    | `10`                  | `20`         |
+| `AI_DEFAULT_TEMPERATURE`        | Response randomness (0.0 to 2.0) | `0.7`                 | `0.5`        |
+| `AI_DEFAULT_MAX_TOKENS`         | Max tokens for AI response       | `150`                 | `300`        |
 
 ### Worker Blast Outbox
 
-| Variable              | Description                                | Default                 | Example                     |
-|:----------------------|:-------------------------------------------|:------------------------|:----------------------------|
-| `OUTBOX_API_BASEURL`  | Base URL of the main API (worker calls it) | `http://localhost:2121` | `https://api.example.com`   |
-| `WORKER_API_KEY`      | API key used by the worker on the `X-API-Key` header | --            | `hwa_...` (32 hex chars)    |
+| Variable             | Description                                          | Default                 | Example                   |
+|:---------------------|:-----------------------------------------------------|:------------------------|:--------------------------|
+| `OUTBOX_API_BASEURL` | Base URL of the main API (worker calls it)           | `http://localhost:2121` | `https://api.example.com` |
+| `WORKER_API_KEY`     | API key used by the worker on the `X-API-Key` header | --                      | `hwa_...` (32 hex chars)  |
 
 The worker runs as a standalone binary and communicates with the main API to send messages. Authentication is API-key based: create an API key in the web UI (Profile → API Keys → Generate), then set `WORKER_API_KEY=hwa_...` in the worker's environment. The worker reads configurations from `APP_DATABASE_URL` and processes messages from `OUTBOX_DATABASE_URL` (falls back to `APP_DATABASE_URL` if not set). The worker can run on a separate host — only `APP_DATABASE_URL`, `OUTBOX_DATABASE_URL`, `OUTBOX_API_BASEURL`, and `WORKER_API_KEY` are required.
 
 ### Resource Limits
 
-| Variable                    | Description                                   | Default | Example |
-|:----------------------------|:----------------------------------------------|:--------|:--------|
-| `MAX_INSTANCES_PER_USER`    | Max WhatsApp instances per non-admin user     | `10`    | `20`    |
-| `OUTBOX_MAX_DAILY_PER_USER` | Max outbox messages per user per day          | `10000` | `50000` |
+| Variable                    | Description                               | Default | Example |
+|:----------------------------|:------------------------------------------|:--------|:--------|
+| `MAX_INSTANCES_PER_USER`    | Max WhatsApp instances per non-admin user | `10`    | `20`    |
+| `OUTBOX_MAX_DAILY_PER_USER` | Max outbox messages per user per day      | `10000` | `50000` |
 
 ---
 
@@ -512,13 +512,13 @@ No manual migration commands are needed.
 
 Authenticated user management endpoints (requires session cookie):
 
-| Method | Endpoint           | Description                          |
-|:-------|:-------------------|:-------------------------------------|
-| GET    | `/api/me`          | Get current user profile             |
-| PUT    | `/api/me`          | Update profile (name, avatar)        |
+| Method | Endpoint           | Description                             |
+|:-------|:-------------------|:----------------------------------------|
+| GET    | `/api/me`          | Get current user profile                |
+| PUT    | `/api/me`          | Update profile (name, avatar)           |
 | PUT    | `/api/me/password` | Change password (destroys all sessions) |
 | POST   | `/logout`          | Logout (public route, destroys session) |
-| POST   | `/api/me/avatar`   | Upload avatar image                  |
+| POST   | `/api/me/avatar`   | Upload avatar image                     |
 
 ---
 
@@ -526,17 +526,17 @@ Authenticated user management endpoints (requires session cookie):
 
 WhatsApp instance lifecycle endpoints (requires session cookie + instance access):
 
-| Method | Endpoint                        | Description                          |
-|:-------|:--------------------------------|:-------------------------------------|
-| POST   | `/api/login`                    | Create new WhatsApp instance (legacy path — unrelated to `/login` auth) |
-| GET    | `/api/instances`                | List all instances (role-filtered)   |
-| PATCH  | `/api/instances/:instanceId`    | Update instance fields               |
-| DELETE | `/api/instances/:instanceId`    | Delete instance                      |
-| GET    | `/api/qr/:instanceId`          | Get QR code for pairing              |
-| DELETE | `/api/qr-cancel/:instanceId`   | Cancel QR code generation            |
-| GET    | `/api/status/:instanceId`      | Get instance connection status       |
-| POST   | `/api/logout/:instanceId`      | Logout WhatsApp session              |
-| GET    | `/api/info-device/:instanceId` | Get device info (JID, phone, platform)|
+| Method | Endpoint                       | Description                                                             |
+|:-------|:-------------------------------|:------------------------------------------------------------------------|
+| POST   | `/api/login`                   | Create new WhatsApp instance (legacy path — unrelated to `/login` auth) |
+| GET    | `/api/instances`               | List all instances (role-filtered)                                      |
+| PATCH  | `/api/instances/:instanceId`   | Update instance fields                                                  |
+| DELETE | `/api/instances/:instanceId`   | Delete instance                                                         |
+| GET    | `/api/qr/:instanceId`          | Get QR code for pairing                                                 |
+| DELETE | `/api/qr-cancel/:instanceId`   | Cancel QR code generation                                               |
+| GET    | `/api/status/:instanceId`      | Get instance connection status                                          |
+| POST   | `/api/logout/:instanceId`      | Logout WhatsApp session                                                 |
+| GET    | `/api/info-device/:instanceId` | Get device info (JID, phone, platform)                                  |
 
 ### Create Instance
 
@@ -580,22 +580,22 @@ Send messages via instance ID or phone number (requires session cookie):
 
 ### By Instance ID
 
-| Method | Endpoint                              | Description                    |
-|:-------|:--------------------------------------|:-------------------------------|
-| POST   | `/api/send/:instanceId`               | Send text message              |
-| POST   | `/api/send/:instanceId/media`         | Send media file (upload)       |
-| POST   | `/api/send/:instanceId/media-url`     | Send media from URL            |
-| POST   | `/api/check/:instanceId`              | Check if number is on WhatsApp |
+| Method | Endpoint                          | Description                    |
+|:-------|:----------------------------------|:-------------------------------|
+| POST   | `/api/send/:instanceId`           | Send text message              |
+| POST   | `/api/send/:instanceId/media`     | Send media file (upload)       |
+| POST   | `/api/send/:instanceId/media-url` | Send media from URL            |
+| POST   | `/api/check/:instanceId`          | Check if number is on WhatsApp |
 
 ### By Phone Number
 
 Routes resolve the phone number to an instance, then check user access:
 
-| Method | Endpoint                                    | Description                    |
-|:-------|:--------------------------------------------|:-------------------------------|
-| POST   | `/api/by-number/:phoneNumber`               | Send text message              |
-| POST   | `/api/by-number/:phoneNumber/media-url`     | Send media from URL            |
-| POST   | `/api/by-number/:phoneNumber/media-file`    | Send media file (upload)       |
+| Method | Endpoint                                 | Description              |
+|:-------|:-----------------------------------------|:-------------------------|
+| POST   | `/api/by-number/:phoneNumber`            | Send text message        |
+| POST   | `/api/by-number/:phoneNumber/media-url`  | Send media from URL      |
+| POST   | `/api/by-number/:phoneNumber/media-file` | Send media file (upload) |
 
 ### Send Text Message
 
@@ -663,21 +663,21 @@ Group operations via instance ID or phone number (requires session cookie):
 
 ### By Instance ID
 
-| Method | Endpoint                                     | Description              |
-|:-------|:---------------------------------------------|:-------------------------|
-| GET    | `/api/groups/:instanceId`                    | List all groups          |
-| POST   | `/api/send-group/:instanceId`                | Send text to group       |
-| POST   | `/api/send-group/:instanceId/media`          | Send media file to group |
-| POST   | `/api/send-group/:instanceId/media-url`      | Send media URL to group  |
+| Method | Endpoint                                | Description              |
+|:-------|:----------------------------------------|:-------------------------|
+| GET    | `/api/groups/:instanceId`               | List all groups          |
+| POST   | `/api/send-group/:instanceId`           | Send text to group       |
+| POST   | `/api/send-group/:instanceId/media`     | Send media file to group |
+| POST   | `/api/send-group/:instanceId/media-url` | Send media URL to group  |
 
 ### By Phone Number
 
-| Method | Endpoint                                              | Description              |
-|:-------|:------------------------------------------------------|:-------------------------|
-| GET    | `/api/groups/by-number/:phoneNumber`                  | List all groups          |
-| POST   | `/api/send-group/by-number/:phoneNumber`              | Send text to group       |
-| POST   | `/api/send-group/by-number/:phoneNumber/media`        | Send media file to group |
-| POST   | `/api/send-group/by-number/:phoneNumber/media-url`    | Send media URL to group  |
+| Method | Endpoint                                           | Description              |
+|:-------|:---------------------------------------------------|:-------------------------|
+| GET    | `/api/groups/by-number/:phoneNumber`               | List all groups          |
+| POST   | `/api/send-group/by-number/:phoneNumber`           | Send text to group       |
+| POST   | `/api/send-group/by-number/:phoneNumber/media`     | Send media file to group |
+| POST   | `/api/send-group/by-number/:phoneNumber/media-url` | Send media URL to group  |
 
 ---
 
@@ -685,10 +685,10 @@ Group operations via instance ID or phone number (requires session cookie):
 
 File browser for the uploads directory (requires session cookie):
 
-| Method | Endpoint      | Description                     |
-|:-------|:--------------|:--------------------------------|
-| GET    | `/api/files`  | List uploaded files             |
-| DELETE | `/api/files`  | Delete a file (admin only)      |
+| Method | Endpoint     | Description                |
+|:-------|:-------------|:---------------------------|
+| GET    | `/api/files` | List uploaded files        |
+| DELETE | `/api/files` | Delete a file (admin only) |
 
 ---
 
@@ -696,10 +696,10 @@ File browser for the uploads directory (requires session cookie):
 
 Company branding configuration (requires session cookie):
 
-| Method | Endpoint               | Description                           |
-|:-------|:-----------------------|:--------------------------------------|
-| GET    | `/api/system/identity` | Get system identity (name, logos)     |
-| POST   | `/api/system/identity` | Update identity (admin only, multipart)|
+| Method | Endpoint               | Description                             |
+|:-------|:-----------------------|:----------------------------------------|
+| GET    | `/api/system/identity` | Get system identity (name, logos)       |
+| POST   | `/api/system/identity` | Update identity (admin only, multipart) |
 
 ---
 
@@ -709,54 +709,54 @@ WhatsApp conversation simulation management (requires session cookie):
 
 ### Scripts
 
-| Method | Endpoint                    | Description         |
-|:-------|:----------------------------|:--------------------|
-| POST   | `/api/warming/scripts`      | Create script       |
-| GET    | `/api/warming/scripts`      | List all scripts    |
-| GET    | `/api/warming/scripts/:id`  | Get script by ID    |
-| PUT    | `/api/warming/scripts/:id`  | Update script       |
-| DELETE | `/api/warming/scripts/:id`  | Delete script       |
+| Method | Endpoint                   | Description      |
+|:-------|:---------------------------|:-----------------|
+| POST   | `/api/warming/scripts`     | Create script    |
+| GET    | `/api/warming/scripts`     | List all scripts |
+| GET    | `/api/warming/scripts/:id` | Get script by ID |
+| PUT    | `/api/warming/scripts/:id` | Update script    |
+| DELETE | `/api/warming/scripts/:id` | Delete script    |
 
 ### Script Lines
 
-| Method | Endpoint                                            | Description              |
-|:-------|:----------------------------------------------------|:-------------------------|
-| POST   | `/api/warming/scripts/:scriptId/lines`              | Create line              |
-| GET    | `/api/warming/scripts/:scriptId/lines`              | List all lines           |
-| GET    | `/api/warming/scripts/:scriptId/lines/:id`          | Get line by ID           |
-| PUT    | `/api/warming/scripts/:scriptId/lines/:id`          | Update line              |
-| DELETE | `/api/warming/scripts/:scriptId/lines/:id`          | Delete line              |
-| POST   | `/api/warming/scripts/:scriptId/lines/generate`     | AI-generate lines        |
-| PUT    | `/api/warming/scripts/:scriptId/lines/reorder`      | Reorder lines            |
+| Method | Endpoint                                        | Description       |
+|:-------|:------------------------------------------------|:------------------|
+| POST   | `/api/warming/scripts/:scriptId/lines`          | Create line       |
+| GET    | `/api/warming/scripts/:scriptId/lines`          | List all lines    |
+| GET    | `/api/warming/scripts/:scriptId/lines/:id`      | Get line by ID    |
+| PUT    | `/api/warming/scripts/:scriptId/lines/:id`      | Update line       |
+| DELETE | `/api/warming/scripts/:scriptId/lines/:id`      | Delete line       |
+| POST   | `/api/warming/scripts/:scriptId/lines/generate` | AI-generate lines |
+| PUT    | `/api/warming/scripts/:scriptId/lines/reorder`  | Reorder lines     |
 
 ### Templates
 
-| Method | Endpoint                       | Description         |
-|:-------|:-------------------------------|:--------------------|
-| POST   | `/api/warming/templates`       | Create template     |
-| GET    | `/api/warming/templates`       | List all templates  |
-| GET    | `/api/warming/templates/:id`   | Get template by ID  |
-| PUT    | `/api/warming/templates/:id`   | Update template     |
-| DELETE | `/api/warming/templates/:id`   | Delete template     |
+| Method | Endpoint                     | Description        |
+|:-------|:-----------------------------|:-------------------|
+| POST   | `/api/warming/templates`     | Create template    |
+| GET    | `/api/warming/templates`     | List all templates |
+| GET    | `/api/warming/templates/:id` | Get template by ID |
+| PUT    | `/api/warming/templates/:id` | Update template    |
+| DELETE | `/api/warming/templates/:id` | Delete template    |
 
 ### Rooms (Execution)
 
-| Method | Endpoint                              | Description            |
-|:-------|:--------------------------------------|:-----------------------|
-| POST   | `/api/warming/rooms`                  | Create room            |
-| GET    | `/api/warming/rooms`                  | List all rooms         |
-| GET    | `/api/warming/rooms/:id`              | Get room by ID         |
-| PUT    | `/api/warming/rooms/:id`              | Update room            |
-| DELETE | `/api/warming/rooms/:id`              | Delete room            |
-| PATCH  | `/api/warming/rooms/:id/status`       | Update room status     |
-| POST   | `/api/warming/rooms/:id/restart`      | Restart room execution |
+| Method | Endpoint                         | Description            |
+|:-------|:---------------------------------|:-----------------------|
+| POST   | `/api/warming/rooms`             | Create room            |
+| GET    | `/api/warming/rooms`             | List all rooms         |
+| GET    | `/api/warming/rooms/:id`         | Get room by ID         |
+| PUT    | `/api/warming/rooms/:id`         | Update room            |
+| DELETE | `/api/warming/rooms/:id`         | Delete room            |
+| PATCH  | `/api/warming/rooms/:id/status`  | Update room status     |
+| POST   | `/api/warming/rooms/:id/restart` | Restart room execution |
 
 ### Logs
 
-| Method | Endpoint                  | Description         |
-|:-------|:--------------------------|:--------------------|
-| GET    | `/api/warming/logs`       | List all logs       |
-| GET    | `/api/warming/logs/:id`   | Get log by ID       |
+| Method | Endpoint                | Description   |
+|:-------|:------------------------|:--------------|
+| GET    | `/api/warming/logs`     | List all logs |
+| GET    | `/api/warming/logs/:id` | Get log by ID |
 
 ---
 
@@ -764,16 +764,16 @@ WhatsApp conversation simulation management (requires session cookie):
 
 Blast outbox worker configuration (requires session cookie):
 
-| Method | Endpoint                                        | Description                    |
-|:-------|:------------------------------------------------|:-------------------------------|
-| POST   | `/api/blast-outbox/configs`                     | Create worker config           |
-| GET    | `/api/blast-outbox/configs`                     | List all configs               |
-| GET    | `/api/blast-outbox/configs/:id`                 | Get config by ID               |
-| PUT    | `/api/blast-outbox/configs/:id`                 | Update config                  |
-| DELETE | `/api/blast-outbox/configs/:id`                 | Delete config                  |
-| POST   | `/api/blast-outbox/configs/:id/toggle`          | Toggle config enabled/disabled |
-| GET    | `/api/blast-outbox/available-circles`           | List available circles         |
-| GET    | `/api/blast-outbox/available-applications`      | List available applications    |
+| Method | Endpoint                                   | Description                    |
+|:-------|:-------------------------------------------|:-------------------------------|
+| POST   | `/api/blast-outbox/configs`                | Create worker config           |
+| GET    | `/api/blast-outbox/configs`                | List all configs               |
+| GET    | `/api/blast-outbox/configs/:id`            | Get config by ID               |
+| PUT    | `/api/blast-outbox/configs/:id`            | Update config                  |
+| DELETE | `/api/blast-outbox/configs/:id`            | Delete config                  |
+| POST   | `/api/blast-outbox/configs/:id/toggle`     | Toggle config enabled/disabled |
+| GET    | `/api/blast-outbox/available-circles`      | List available circles         |
+| GET    | `/api/blast-outbox/available-applications` | List available applications    |
 
 ---
 
@@ -935,13 +935,13 @@ Content-Type: application/json
 
 When a secret is configured, Charon signs every outgoing webhook using HMAC-SHA256 over a timestamped payload:
 
-| Detail     | Value                                                 |
-|:-----------|:------------------------------------------------------|
-| Headers    | `X-Charon-Timestamp`, `X-Charon-Signature`          |
-| Algorithm  | HMAC-SHA256                                           |
-| Message    | `timestamp` + `.` + raw HTTP request body             |
-| Key        | Instance-specific `webhook_secret`                    |
-| Timestamp  | Unix seconds since epoch, sent as `X-Charon-Timestamp` |
+| Detail    | Value                                                  |
+|:----------|:-------------------------------------------------------|
+| Headers   | `X-Charon-Timestamp`, `X-Charon-Signature`             |
+| Algorithm | HMAC-SHA256                                            |
+| Message   | `timestamp` + `.` + raw HTTP request body              |
+| Key       | Instance-specific `webhook_secret`                     |
+| Timestamp | Unix seconds since epoch, sent as `X-Charon-Timestamp` |
 
 **Receiver-side verification recipe:**
 
@@ -1018,11 +1018,11 @@ Admin self-deletion is blocked. The last remaining admin cannot be deleted.
 
 Manage API keys for external integrations (requires session cookie):
 
-| Method | Endpoint              | Description                     |
-|:-------|:----------------------|:--------------------------------|
-| POST   | `/api/api-keys`       | Create a new API key            |
-| GET    | `/api/api-keys`       | List all API keys for your user |
-| DELETE | `/api/api-keys/:id`   | Revoke and delete an API key    |
+| Method | Endpoint            | Description                     |
+|:-------|:--------------------|:--------------------------------|
+| POST   | `/api/api-keys`     | Create a new API key            |
+| GET    | `/api/api-keys`     | List all API keys for your user |
+| DELETE | `/api/api-keys/:id` | Revoke and delete an API key    |
 
 API keys use the `X-API-Key` header and are scoped per user. The raw key (`hwa_...32hex`) is shown only once on creation — it is stored as a SHA-256 hash. An optional `application` field locks the key to a specific outbox application.
 
@@ -1045,13 +1045,13 @@ Contact management endpoints (requires session cookie + instance access):
 
 The following list endpoints accept standard `?page=<n>&limit=<n>` query parameters:
 
-| Endpoint                         | Default `limit` | Max `limit` |
-|:---------------------------------|:----------------|:------------|
-| `GET /api/instances`             | 100             | 500         |
-| `GET /api/admin/users`           | 100             | 500         |
-| `GET /api/outbox/messages`       | 50              | 500         |
-| `GET /api/contacts/:instanceId`  | 50              | 500         |
-| `GET /api/warming/rooms/:id/logs`| 100             | 500         |
+| Endpoint                          | Default `limit` | Max `limit` |
+|:----------------------------------|:----------------|:------------|
+| `GET /api/instances`              | 100             | 500         |
+| `GET /api/admin/users`            | 100             | 500         |
+| `GET /api/outbox/messages`        | 50              | 500         |
+| `GET /api/contacts/:instanceId`   | 50              | 500         |
+| `GET /api/warming/rooms/:id/logs` | 100             | 500         |
 
 `page` is 1-indexed. Responses carry the `total` count alongside the items array so the caller can render pagination controls.
 
