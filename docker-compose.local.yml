@@ -9,7 +9,7 @@ services:
       - ./docker-data/postgres:/var/lib/postgresql/data
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     ports:
-      - "5432:5432"
+      - "8322:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U charon"]
       interval: 3s
@@ -27,7 +27,7 @@ services:
     environment:
       PORT: "2121"
       BASEURL: "0.0.0.0"
-      CORS_ALLOW_ORIGINS: "http://localhost:3000,http://localhost:8080,http://localhost:5174"
+      CORS_ALLOW_ORIGINS: "http://localhost:8321,http://localhost:8320"
       PHONE_COUNTRY_CODE: "90"
       CHARON_ENABLE_WEBSOCKET_INCOMING_MSG: "false"
       CHARON_ENABLE_WEBHOOK: "false"
@@ -64,7 +64,7 @@ services:
       - ./docker-data/go-build:/root/.cache/go-build
       - ./docker-data/uploads:/app/uploads
     ports:
-      - "2121:2121"
+      - "8320:2121"
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,7 +110,7 @@ services:
       - ./web:/app/web
       - ./docker-data/node-modules:/app/web/node_modules
     ports:
-      - "5174:5173"
+      - "8321:5173"
     depends_on:
       api:
         condition: service_healthy

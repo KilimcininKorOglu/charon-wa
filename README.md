@@ -291,12 +291,16 @@ docker compose -f docker-compose.local.yml logs -f
 docker compose -f docker-compose.local.yml down
 ```
 
-| Service    | Port | Description                |
-|:-----------|:-----|:---------------------------|
-| `postgres` | 5432 | PostgreSQL database        |
-| `api`      | 2121 | Go API server (hot-reload) |
-| `worker`   | --   | Blast outbox worker        |
-| `web`      | 5174 | Vite dev server (React UI) |
+| Service    | Host Port | Container Port | Description                |
+|:-----------|:----------|:---------------|:---------------------------|
+| `postgres` | 8322      | 5432           | PostgreSQL database        |
+| `api`      | 8320      | 2121           | Go API server (hot-reload) |
+| `worker`   | --        | --             | Blast outbox worker        |
+| `web`      | 8321      | 5173           | Vite dev server (React UI) |
+
+Open the UI at `http://localhost:8321`. The Vite dev server proxies `/api`, `/ws`, and `/uploads` to `api:2121` over the compose network, so the browser only talks to port 8321. `CORS_ALLOW_ORIGINS` must list that origin, because the WebSocket `CheckOrigin` reuses the same list.
+
+Container ports are unchanged: the API still listens on `PORT=2121` and PostgreSQL on 5432. Only the published host ports differ, so the stack does not collide with other local projects.
 
 All volumes bind-mount to `docker-data/` directory. The API server uses `air` for hot-reload during development.
 
