@@ -99,6 +99,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 - Multi-application support: one worker handles multiple applications sequentially
 - Sequential FIFO queuing by `insertDateTime`
 - Atomic message claiming with `FOR UPDATE SKIP LOCKED`
+- Stale claim recovery: a reaper runs every 60 seconds and returns messages stuck in `processing` for over 10 minutes back to `pending`
 - Wildcard support (`*`) to process all applications
 - Dynamic configuration with auto-reload every 30 seconds
 - Interruptible sleep for graceful shutdown
@@ -141,7 +142,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 | Language  | Go 1.26.2+                                                   |
 | Framework | [Echo v4](https://echo.labstack.com/)                        |
 | WhatsApp  | [whatsmeow](https://github.com/tulir/whatsmeow)              |
-| Database  | PostgreSQL 12+                                               |
+| Database  | PostgreSQL 13+                                               |
 | WebSocket | [Gorilla WebSocket](https://github.com/gorilla/websocket)    |
 | AI        | Google Gemini API                                            |
 | Frontend  | React 19 + Vite 8 + TypeScript + TailwindCSS v4 + Zustand v5 |
@@ -155,7 +156,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 
 - Go 1.26.2 or later
 - Node.js 22+ and npm (for frontend)
-- PostgreSQL 12 or later
+- PostgreSQL 13 or later (the schema calls `gen_random_uuid()`, which is only built in from 13 onward)
 - Make (build tool)
 - Docker and Docker Compose
 - (Cross-compilation only) Zig (`brew install zig`)
@@ -171,11 +172,20 @@ GOFLAGS=-mod=mod make build
 # Build frontend
 cd web && npm install && npm run build
 
+# Run backend tests (always uncached, -count=1)
+make test
+
 # Lint (format + vet)
 make lint
 
 # Clean build artifacts
 make clean
+```
+
+`make lint` runs `go fmt ./...` and `go vet ./...` across the module. If a local `docker-data/go-mod` directory exists it also breaks these two commands, so fall back to:
+
+```bash
+gofmt -w $(git ls-files "*.go") && go vet . ./cmd/worker/... ./config/... ./database/... ./internal/...
 ```
 
 ### Run
@@ -212,11 +222,13 @@ Charon uses **server-side sessions with httpOnly cookies** for user/UI authentic
 
 ### Roles
 
-| Role     | Description                                                             |
-|:---------|:------------------------------------------------------------------------|
-| `admin`  | Full access to all resources and admin endpoints                        |
-| `user`   | Standard access, scoped to assigned instances                           |
-| `viewer` | Read-only access, blocked from all write operations on instances/phones |
+| Role     | Description                                                                       |
+|:---------|:-----------------------------------------------------------------------------------|
+| `admin`  | Full access to all resources and admin endpoints                                  |
+| `user`   | Standard access, scoped to the instances assigned in the `user_instances` table   |
+| `viewer` | Read-only, and shut out of every instance-scoped and phone-number-scoped endpoint |
+
+The `viewer` role is stricter than a plain write block. `RequireInstanceAccess()` and `RequirePhoneNumberAccess()` reject viewers before the permission lookup, so a viewer receives 403 even on read-only routes such as `GET /api/status/:instanceId`, `GET /api/contacts/:instanceId`, and `GET /api/groups/:instanceId`. Viewers can still call the endpoints that are not instance-scoped: `GET /api/instances`, their own profile, and the warming, blast-outbox, and outbox read endpoints. Writes on warming, blast-outbox, and API keys are additionally gated by `RequireRole("admin", "user")`.
 
 ### Session Flow
 
@@ -822,6 +834,18 @@ Content-Type: application/json
 }
 ```
 
+| Field         | Required | Description                                                         |
+|:--------------|:---------|:---------------------------------------------------------------------|
+| `destination` | yes      | Recipient phone number                                              |
+| `message`     | yes      | Message body                                                        |
+| `application` | yes      | Application name the worker config routes on                        |
+| `table_id`    | no       | Free-form correlation id echoed back in the worker webhook callback |
+| `file`        | no       | Media URL sent with the message                                     |
+| `type`        | no       | Message type, stored as `1` when omitted or `0`                     |
+| `priority`    | no       | Stored and returned, but does not affect dispatch order             |
+
+Delivery order is strict FIFO by `insertDateTime`, so `priority` cannot move a message up the queue.
+
 **Response:**
 
 ```json
@@ -887,7 +911,7 @@ X-API-Key: hwa_your_api_key_here
 ws://{host}:{port}/ws
 ```
 
-The browser sends the `session` cookie automatically on same-origin WebSocket upgrade — no ticket exchange or query token. Origin is validated against `CORS_ALLOW_ORIGINS`. Non-admin clients only receive events for instances they own (user-scoped filtering via the `user_instances` table).
+The browser sends the `session` cookie automatically on same-origin WebSocket upgrade — no ticket exchange or query token. The upgrade handshake rejects any `Origin` header that is not in `CORS_ALLOW_ORIGINS`; a request with no `Origin` header at all is accepted, so non-browser clients (curl, Postman) still work. Non-admin clients only receive events for instances they own (user-scoped filtering via the `user_instances` table).
 
 Monitors QR code generation, login/logout events, connection status changes, and system-wide notifications.
 
@@ -1049,15 +1073,17 @@ Contact management endpoints (requires session cookie + instance access):
 
 The following list endpoints accept standard `?page=<n>&limit=<n>` query parameters:
 
-| Endpoint                          | Default `limit` | Max `limit` |
-|:----------------------------------|:----------------|:------------|
-| `GET /api/instances`              | 100             | 500         |
-| `GET /api/admin/users`            | 100             | 500         |
-| `GET /api/outbox/messages`        | 50              | 500         |
-| `GET /api/contacts/:instanceId`   | 50              | 500         |
-| `GET /api/warming/rooms/:id/logs` | 100             | 500         |
+| Endpoint                        | Default `limit` | Max `limit` | Out-of-range `limit` |
+|:--------------------------------|:----------------|:------------|:---------------------|
+| `GET /api/instances`            | 100             | 500         | clamped to 500       |
+| `GET /api/admin/users`          | 20              | 100         | falls back to 20     |
+| `GET /api/outbox/messages`      | 50              | 100         | falls back to 50     |
+| `GET /api/contacts/:instanceId` | 50              | 50          | falls back to 50     |
+| `GET /api/warming/logs`         | 100             | 500         | falls back to 100    |
 
 `page` is 1-indexed. Responses carry the `total` count alongside the items array so the caller can render pagination controls.
+
+Only `GET /api/instances` clamps an oversized `limit` down to the maximum. The other endpoints silently reset it to their default, so requesting `limit=1000` returns the default page size rather than an error.
 
 Warming list endpoints (`scripts`, `templates`, `rooms`) currently return the full user-scoped set without pagination — filter client-side if needed.
 
@@ -1071,19 +1097,18 @@ An OpenAPI 3.0 specification is included in `api_docs/openapi.json` — routes, 
 
 ## Version Management
 
-The `VERSION` file at the repository root is the single source of truth for the
-project version. The release skill (`/version-update <x.y.z>`) must update, in
-this order:
+The `VERSION` file at the repository root is the single source of truth for the project version. A release updates four places, in this order:
 
 1. `VERSION`
 2. `CHANGELOG.md` top heading (`## [x.y.z] - YYYY-MM-DD`)
 3. `web/package.json` `"version"` field
-4. The git tag pushed after the commit (`git tag vX.Y.Z`)
+4. The git tag pushed after the commit (`git tag vX.Y.Z && git push --tags`)
 
-`main.go` reads `VERSION` at startup via `resolveVersion()` — do not hard-code
-a version string in code. Do not tag a release without matching entries in
-`CHANGELOG.md` and `web/package.json`; the release workflow will still produce
-artifacts, so the consistency check is manual.
+Run `make build` before tagging. The Makefile injects the version through `-ldflags` (`main.version`, `main.commit`, `main.buildDate`), and only the full build surfaces link-time errors that a bare `go build` can miss.
+
+`main.go` never hard-codes a version: `resolveVersion()` returns the ldflag value when present and otherwise reads the `VERSION` file at startup. A binary built outside the Makefile therefore reports whatever `VERSION` contains, so keep that file in step with the tag.
+
+Nothing enforces the four steps automatically. Tagging with a stale `CHANGELOG.md` or `web/package.json` still produces release artifacts, so the consistency check is manual.
 
 ## Disclaimer
 
