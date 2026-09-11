@@ -77,12 +77,12 @@ var magicBytes = map[string][]byte{
 // CreateUploadDirectory ensures upload directories exist
 func CreateUploadDirectory() error {
 	// Create main upload directory
-	if err := os.MkdirAll(UploadDir, 0755); err != nil {
+	if err := os.MkdirAll(UploadDir, 0750); err != nil {
 		return fmt.Errorf("failed to create upload directory: %w", err)
 	}
 
 	// Create avatars subdirectory
-	if err := os.MkdirAll(AvatarDir, 0755); err != nil {
+	if err := os.MkdirAll(AvatarDir, 0750); err != nil {
 		return fmt.Errorf("failed to create avatars directory: %w", err)
 	}
 
@@ -204,15 +204,17 @@ func GetUserAvatarURL(userID int64) string {
 
 // SaveFile saves uploaded file to disk
 func SaveFile(src multipart.File, destPath string) error {
-	// Create destination file
+	// destPath is built by GetUserAvatarPath from the caller's own user id and a
+	// fixed file name. No request value reaches the path.
+	// #nosec G304
 	dst, err := os.Create(destPath)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 
-	// Set file permissions (read-only for others)
-	if err := dst.Chmod(0644); err != nil {
+	// Set file permissions (owner read-write only)
+	if err := dst.Chmod(0600); err != nil {
 		return fmt.Errorf("failed to set file permissions: %w", err)
 	}
 

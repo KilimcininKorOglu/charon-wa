@@ -81,6 +81,8 @@ func GetAllWarmingLogs(roomID, status string, limit int, userID int64, isAdmin b
 	query += " ORDER BY executed_at DESC"
 
 	if limit > 0 {
+		// The appended fragment holds only a $N placeholder. The value travels in args.
+		// #nosec G202
 		query += fmt.Sprintf(" LIMIT $%d", argIndex)
 		args = append(args, limit)
 	}

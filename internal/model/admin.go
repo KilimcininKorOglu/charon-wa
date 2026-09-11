@@ -94,6 +94,8 @@ func GetAllUsers(params ListUsersParams) (*PaginatedUsers, error) {
 
 	// Add pagination
 	offset := (params.Page - 1) * params.Limit
+	// The appended fragments hold only $N placeholders. Every value travels in args.
+	// #nosec G202
 	dataQuery += fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
 	args = append(args, params.Limit, offset)
 

@@ -102,7 +102,7 @@ func UpdateSystemIdentityFull(c echo.Context) error {
 		}
 
 		// Create system directory
-		_ = os.MkdirAll(SystemDir, 0755)
+		_ = os.MkdirAll(SystemDir, 0750)
 
 		// Use fixed filename (will overwrite old file)
 		filename := fmt.Sprintf("%s.webp", key)
@@ -132,7 +132,7 @@ func UpdateSystemIdentityFull(c echo.Context) error {
 		}
 
 		// Save new file
-		if err := os.WriteFile(filePath, compressedData, 0644); err != nil {
+		if err := os.WriteFile(filePath, compressedData, 0600); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 				"success": false,
 				"message": fmt.Sprintf("Failed to save file %s", key),

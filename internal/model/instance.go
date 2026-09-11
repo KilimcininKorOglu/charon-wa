@@ -575,6 +575,8 @@ func UpdateInstanceFields(instanceID string, req *UpdateInstanceFieldsRequest) e
 		query += ", " + updates[i]
 	}
 
+	// The appended fragment holds only a $N placeholder. The value travels in args.
+	// #nosec G202
 	query += fmt.Sprintf(" WHERE instance_id = $%d", argCount)
 	args = append(args, instanceID)
 

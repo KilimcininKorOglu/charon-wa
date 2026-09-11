@@ -61,7 +61,7 @@ func UploadAvatar(c echo.Context) error {
 
 	// Create user-specific directory
 	userDir := helper.GetUserUploadDir(userClaims.UserID)
-	if err := os.MkdirAll(userDir, 0755); err != nil {
+	if err := os.MkdirAll(userDir, 0750); err != nil {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to create user directory", "DIRECTORY_ERROR", err.Error())
 	}
 
@@ -128,14 +128,17 @@ func UploadAvatar(c echo.Context) error {
 
 // saveCompressedFile saves compressed byte data to file
 func saveCompressedFile(filePath string, data []byte) error {
+	// filePath is built by helper.GetUserAvatarPath from the caller's own user id
+	// and a fixed file name. No request value reaches the path.
+	// #nosec G304
 	file, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
-	// Set file permissions
-	if err := file.Chmod(0644); err != nil {
+	// Set file permissions (owner read-write only)
+	if err := file.Chmod(0600); err != nil {
 		return fmt.Errorf("failed to set file permissions: %w", err)
 	}
 

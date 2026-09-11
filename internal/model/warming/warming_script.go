@@ -108,6 +108,8 @@ func GetAllWarmingScripts(q, category string, userID int64, isAdmin bool) ([]War
 	}
 
 	// Cap row count to avoid scanning arbitrarily large tables on ad-hoc list calls.
+	// The appended fragment holds only a $N placeholder. The value travels in args.
+	// #nosec G202
 	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d", argCount)
 	args = append(args, 500)
 
