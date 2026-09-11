@@ -29,7 +29,7 @@ type WorkerConfig struct {
 // GetWorkerConfigs retrieves worker configs based on user permissions
 func GetWorkerConfigs(ctx context.Context, userID int, isAdmin bool) ([]WorkerConfig, error) {
 	var query string
-	var args []interface{}
+	var args []any
 
 	if isAdmin {
 		query = `
@@ -242,7 +242,7 @@ func GetEnabledConfigs(ctx context.Context) ([]WorkerConfig, error) {
 // Admins see all circles; regular users see only their own instances.
 func GetAvailableCircles(ctx context.Context, userID int64, isAdmin bool) ([]string, error) {
 	var query string
-	var args []interface{}
+	var args []any
 
 	if isAdmin {
 		query = `SELECT DISTINCT circle FROM instances WHERE used = true AND circle IS NOT NULL AND circle != '' ORDER BY circle`
@@ -284,7 +284,7 @@ func GetAvailableApplications(ctx context.Context, userID int64, isAdmin bool) (
 	}
 
 	var query string
-	var args []interface{}
+	var args []any
 
 	// The executor follows the table: `outbox` lives in the outbox database,
 	// `outbox_worker_config` lives in the app database. They are the same
