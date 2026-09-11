@@ -214,7 +214,7 @@ func GetAllInstances(limit, offset int, includeSessionData bool) ([]Instance, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var instances []Instance
 	for rows.Next() {

@@ -54,7 +54,7 @@ func GetUserInstances(userID int64) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var instanceIDs []string
 	for rows.Next() {
@@ -83,7 +83,7 @@ func GetInstanceUsers(instanceID string) ([]UserInstance, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var userInstances []UserInstance
 	for rows.Next() {
@@ -181,7 +181,7 @@ func GetUserInstanceCircles(userID int64) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var circles []string
 	for rows.Next() {
@@ -220,7 +220,7 @@ func CreateInstanceAtomic(instance *Instance, userID int64, maxInstances int) er
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Acquire a per-user advisory lock for the duration of this transaction.
 	// Concurrent requests for the same user serialize here.

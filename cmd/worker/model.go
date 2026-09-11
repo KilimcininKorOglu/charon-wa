@@ -52,7 +52,7 @@ func FetchWorkerConfigs(ctx context.Context) ([]WorkerConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var configs []WorkerConfig
 	for rows.Next() {

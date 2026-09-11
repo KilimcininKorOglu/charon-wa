@@ -35,7 +35,7 @@ func GetConversationHistory(roomID uuid.UUID, limit int) ([]ai.ConversationMessa
 	if err != nil {
 		return nil, fmt.Errorf("failed to query conversation history: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var messages []ai.ConversationMessage
 	for rows.Next() {

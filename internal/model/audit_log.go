@@ -34,7 +34,7 @@ func LogAction(log *AuditLog) error {
 
 	// Convert details map to JSONB
 	var detailsJSON interface{}
-	if log.Details != nil && len(log.Details) > 0 {
+	if len(log.Details) > 0 {
 		jsonBytes, err := json.Marshal(log.Details)
 		if err != nil {
 			return err

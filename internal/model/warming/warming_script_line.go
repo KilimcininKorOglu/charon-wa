@@ -100,7 +100,7 @@ func GetAllWarmingScriptLines(scriptID int64) ([]WarmingScriptLine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query warming script lines: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var lines []WarmingScriptLine
 	for rows.Next() {
@@ -206,17 +206,11 @@ func DeleteWarmingScriptLine(scriptID int64, lineID int64) error {
 	return nil
 }
 
-// ToWarmingScriptLineResponse converts WarmingScriptLine to response format
+// ToWarmingScriptLineResponse converts WarmingScriptLine to response format.
+// The two structs share every field and type, so the conversion carries them
+// all. Adding a field to one and not the other stops this line compiling.
 func ToWarmingScriptLineResponse(line WarmingScriptLine) WarmingScriptLineResponse {
-	return WarmingScriptLineResponse{
-		ID:                line.ID,
-		ScriptID:          line.ScriptID,
-		SequenceOrder:     line.SequenceOrder,
-		ActorRole:         line.ActorRole,
-		MessageContent:    line.MessageContent,
-		TypingDurationSec: line.TypingDurationSec,
-		CreatedAt:         line.CreatedAt,
-	}
+	return WarmingScriptLineResponse(line)
 }
 
 // ReorderScriptLines updates sequence order for multiple lines in a transaction
@@ -230,7 +224,7 @@ func ReorderScriptLines(scriptID int64, req *ReorderScriptLinesRequest) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// PHASE 1: Set all sequences to temporary negative values to avoid unique constraint conflicts
 	// This prevents conflicts when swapping sequences (e.g., 1→2 and 2→1)

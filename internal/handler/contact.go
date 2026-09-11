@@ -544,7 +544,7 @@ func ExportContacts(c echo.Context) error {
 
 func exportToExcel(c echo.Context, contacts []ContactInfo, instanceID string) error {
 	f := excelize.NewFile()
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sheetName := "Contacts"
 	index, err := f.NewSheet(sheetName)
@@ -552,45 +552,14 @@ func exportToExcel(c echo.Context, contacts []ContactInfo, instanceID string) er
 		return ErrorResponse(c, 500, "Failed to create Excel sheet", "EXCEL_ERROR", err.Error())
 	}
 
-	// Set headers
-	headers := []string{"No", "Phone Number", "Name", "JID", "Type"}
-	for i, header := range headers {
-		cell := fmt.Sprintf("%c1", 'A'+i)
-		f.SetCellValue(sheetName, cell, header)
+	if err := writeContactSheet(f, sheetName, contacts); err != nil {
+		return ErrorResponse(c, 500, "Failed to build Excel sheet", "EXCEL_ERROR", err.Error())
 	}
-
-	// Style headers
-	headerStyle, _ := f.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true},
-		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4472C4"}, Pattern: 1},
-		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
-	})
-	f.SetCellStyle(sheetName, "A1", "E1", headerStyle)
-
-	// Add data
-	for i, contact := range contacts {
-		row := i + 2
-		contactType := "Contact"
-		if contact.IsGroup {
-			contactType = "Group"
-		}
-
-		f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), i+1)
-		f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), sanitizeCell(contact.PhoneNumber))
-		f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), sanitizeCell(contact.Name))
-		f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), sanitizeCell(contact.JID))
-		f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), contactType)
-	}
-
-	// Auto-fit columns
-	f.SetColWidth(sheetName, "A", "A", 5)
-	f.SetColWidth(sheetName, "B", "B", 15)
-	f.SetColWidth(sheetName, "C", "C", 25)
-	f.SetColWidth(sheetName, "D", "D", 35)
-	f.SetColWidth(sheetName, "E", "E", 10)
 
 	f.SetActiveSheet(index)
-	f.DeleteSheet("Sheet1")
+	if err := f.DeleteSheet("Sheet1"); err != nil {
+		return ErrorResponse(c, 500, "Failed to build Excel sheet", "EXCEL_ERROR", err.Error())
+	}
 
 	// Set response headers
 	filename := fmt.Sprintf("contacts_%s.xlsx", instanceID)
@@ -598,6 +567,87 @@ func exportToExcel(c echo.Context, contacts []ContactInfo, instanceID string) er
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 
 	return f.Write(c.Response().Writer)
+}
+
+// contactSheetColumns lists the export columns with their header text and width.
+var contactSheetColumns = []struct {
+	letter string
+	header string
+	width  float64
+}{
+	{"A", "No", 5},
+	{"B", "Phone Number", 15},
+	{"C", "Name", 25},
+	{"D", "JID", 35},
+	{"E", "Type", 10},
+}
+
+// writeContactSheet fills one sheet with the header row, the contact rows and
+// the column widths. It stops at the first excelize error.
+func writeContactSheet(f *excelize.File, sheetName string, contacts []ContactInfo) error {
+	if err := writeContactHeader(f, sheetName); err != nil {
+		return err
+	}
+
+	for i, contact := range contacts {
+		if err := writeContactRow(f, sheetName, i, contact); err != nil {
+			return err
+		}
+	}
+
+	for _, col := range contactSheetColumns {
+		if err := f.SetColWidth(sheetName, col.letter, col.letter, col.width); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// writeContactHeader writes the styled header row.
+func writeContactHeader(f *excelize.File, sheetName string) error {
+	for _, col := range contactSheetColumns {
+		if err := f.SetCellValue(sheetName, col.letter+"1", col.header); err != nil {
+			return err
+		}
+	}
+
+	headerStyle, err := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4472C4"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+	})
+	if err != nil {
+		return err
+	}
+
+	return f.SetCellStyle(sheetName, "A1", "E1", headerStyle)
+}
+
+// writeContactRow writes one contact. index is zero-based; row 1 holds the header.
+func writeContactRow(f *excelize.File, sheetName string, index int, contact ContactInfo) error {
+	contactType := "Contact"
+	if contact.IsGroup {
+		contactType = "Group"
+	}
+
+	row := index + 2
+	values := []any{
+		index + 1,
+		sanitizeCell(contact.PhoneNumber),
+		sanitizeCell(contact.Name),
+		sanitizeCell(contact.JID),
+		contactType,
+	}
+
+	for i, col := range contactSheetColumns {
+		cell := fmt.Sprintf("%s%d", col.letter, row)
+		if err := f.SetCellValue(sheetName, cell, values[i]); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // sanitizeCell prefixes values starting with spreadsheet-formula characters with

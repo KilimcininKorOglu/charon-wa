@@ -120,7 +120,7 @@ func ValidateImageFile(fileHeader *multipart.FileHeader) error {
 	if err != nil {
 		return fmt.Errorf("failed to open file for signature check: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if err := CheckMagicBytes(f); err != nil {
 		return err

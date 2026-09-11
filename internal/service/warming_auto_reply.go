@@ -15,6 +15,7 @@ import (
 	"charon/internal/service/ai"
 	"charon/internal/ws"
 
+	"github.com/google/uuid"
 	"go.mau.fi/whatsmeow/types"
 )
 
@@ -124,8 +125,8 @@ func processAutoReply(room *warmingModel.WarmingRoom, instanceID, sender string)
 				return
 			}
 		}
-		// AI success, lineID = 0 (not from script)
-		lineID = 0
+		// On AI success lineID stays 0, because the reply came from no script
+		// line. After a fallback it holds the script line getScriptReply chose.
 	} else {
 		// Script mode (existing behavior)
 		reply, lineID, err = getScriptReply(room)
@@ -225,7 +226,7 @@ func sendReply(instanceID, recipient, message string, lineID int64, room *warmin
 	}
 
 	if !room.SendRealMessage {
-		warmingModel.CreateWarmingLog(room.ID, lineID, instanceID, recipient, message, "SUCCESS", "dry-run mode", "bot", userID)
+		logWarming(room.ID, lineID, instanceID, recipient, message, "SUCCESS", "dry-run mode", userID)
 		publishHumanVsBotEvent(room, lineID, instanceID, recipient, message, "SUCCESS", "dry-run mode", "BOT")
 		return nil
 	}
@@ -233,15 +234,24 @@ func sendReply(instanceID, recipient, message string, lineID int64, room *warmin
 	success, errMsg := SendWarmingMessageToPhone(instanceID, recipient, message)
 
 	if !success {
-		warmingModel.CreateWarmingLog(room.ID, lineID, instanceID, recipient, message, "FAILED", errMsg, "bot", userID)
+		logWarming(room.ID, lineID, instanceID, recipient, message, "FAILED", errMsg, userID)
 		publishHumanVsBotEvent(room, lineID, instanceID, recipient, message, "FAILED", errMsg, "BOT")
 		return errors.New(errMsg)
 	}
 
-	warmingModel.CreateWarmingLog(room.ID, lineID, instanceID, recipient, message, "SUCCESS", "", "bot", userID)
+	logWarming(room.ID, lineID, instanceID, recipient, message, "SUCCESS", "", userID)
 	publishHumanVsBotEvent(room, lineID, instanceID, recipient, message, "SUCCESS", "", "BOT")
 
 	return nil
+}
+
+// logWarming records one bot warming log line. A logging failure must not abort
+// the reply, so it is reported and then dropped.
+func logWarming(roomID uuid.UUID, lineID int64, instanceID, recipient, message, status, errorMessage string, userID int64) {
+	err := warmingModel.CreateWarmingLog(roomID, lineID, instanceID, recipient, message, status, errorMessage, "bot", userID)
+	if err != nil {
+		log.Printf("[HUMAN_VS_BOT] Failed to write warming log: %v", err)
+	}
 }
 
 func publishHumanVsBotEvent(room *warmingModel.WarmingRoom, lineID int64, senderID, receiverID, message, status, errorMsg, actorRole string) {

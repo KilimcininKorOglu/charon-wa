@@ -4,6 +4,7 @@ package handler
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -89,20 +90,23 @@ func UpdateSystemIdentityFull(c echo.Context) error {
 		}
 
 		if err := helper.CheckMagicBytes(src); err != nil {
-			src.Close()
+			_ = src.Close()
 			return ErrorResponse(c, http.StatusBadRequest,
 				fmt.Sprintf("File %s is not a valid image", key), "INVALID_FILE_SIGNATURE", err.Error())
 		}
 
 		compressedData, err := helper.CompressAndResize(src, file)
-		src.Close()
+		_ = src.Close()
 		if err != nil {
 			return ErrorResponse(c, http.StatusBadRequest,
 				fmt.Sprintf("Image processing failed for %s", key), "PROCESSING_FAILED", err.Error())
 		}
 
 		// Create system directory
-		_ = os.MkdirAll(SystemDir, 0750)
+		if err := os.MkdirAll(SystemDir, 0750); err != nil {
+			return ErrorResponse(c, http.StatusInternalServerError,
+				"Failed to create system upload directory", "DIRECTORY_ERROR", err.Error())
+		}
 
 		// Use fixed filename (will overwrite old file)
 		filename := fmt.Sprintf("%s.webp", key)
@@ -127,7 +131,10 @@ func UpdateSystemIdentityFull(c echo.Context) error {
 			uploadsBase, _ := filepath.Abs("uploads")
 			resolvedOld, err := filepath.Abs(filepath.Join(".", oldPath))
 			if err == nil && strings.HasPrefix(resolvedOld, uploadsBase+string(filepath.Separator)) {
-				helper.DeleteFile(resolvedOld)
+				// A failure here leaves an orphaned file on disk, so report it.
+				if delErr := helper.DeleteFile(resolvedOld); delErr != nil {
+					log.Printf("⚠️ Failed to remove replaced %s image: %v", key, delErr)
+				}
 			}
 		}
 

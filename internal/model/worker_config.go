@@ -53,7 +53,7 @@ func GetWorkerConfigs(ctx context.Context, userID int, isAdmin bool) ([]WorkerCo
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var configs []WorkerConfig
 	for rows.Next() {
@@ -208,7 +208,7 @@ func GetEnabledConfigs(ctx context.Context) ([]WorkerConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var configs []WorkerConfig
 	for rows.Next() {
@@ -260,7 +260,7 @@ func GetAvailableCircles(ctx context.Context, userID int64, isAdmin bool) ([]str
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var circles []string
 	for rows.Next() {
@@ -311,7 +311,7 @@ func GetAvailableApplications(ctx context.Context, userID int64, isAdmin bool) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var applications []string
 	for rows.Next() {

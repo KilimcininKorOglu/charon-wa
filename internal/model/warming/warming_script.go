@@ -117,7 +117,7 @@ func GetAllWarmingScripts(q, category string, userID int64, isAdmin bool) ([]War
 	if err != nil {
 		return nil, fmt.Errorf("failed to query warming scripts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var scripts []WarmingScript
 	for rows.Next() {

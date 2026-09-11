@@ -103,7 +103,7 @@ func GetAllUsers(params ListUsersParams) (*PaginatedUsers, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var users []UserResponse
 	for rows.Next() {
@@ -186,7 +186,7 @@ func AdminDeleteUserAtomic(userID int64) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Lock the target user row
 	var role string
@@ -229,7 +229,7 @@ func GetUserInstanceDetails(userID int64) ([]UserInstanceResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var instances []UserInstanceResponse
 	for rows.Next() {
@@ -270,12 +270,23 @@ func GetAdminStats() (*AdminStats, error) {
 	db := database.AppDB
 	stats := &AdminStats{}
 
-	db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&stats.TotalUsers)
-	db.QueryRow(`SELECT COUNT(*) FROM users WHERE is_active = true`).Scan(&stats.ActiveUsers)
-	db.QueryRow(`SELECT COUNT(*) FROM instances`).Scan(&stats.TotalInstances)
-	db.QueryRow(`SELECT COUNT(*) FROM instances WHERE is_connected = true`).Scan(&stats.ConnectedInstances)
-	db.QueryRow(`SELECT COUNT(*) FROM warming_rooms WHERE status = 'ACTIVE'`).Scan(&stats.ActiveWarmingRooms)
-	db.QueryRow(`SELECT COUNT(*) FROM outbox_worker_config WHERE enabled = true`).Scan(&stats.ActiveWorkers)
+	counts := []struct {
+		query string
+		dest  *int
+	}{
+		{`SELECT COUNT(*) FROM users`, &stats.TotalUsers},
+		{`SELECT COUNT(*) FROM users WHERE is_active = true`, &stats.ActiveUsers},
+		{`SELECT COUNT(*) FROM instances`, &stats.TotalInstances},
+		{`SELECT COUNT(*) FROM instances WHERE is_connected = true`, &stats.ConnectedInstances},
+		{`SELECT COUNT(*) FROM warming_rooms WHERE status = 'ACTIVE'`, &stats.ActiveWarmingRooms},
+		{`SELECT COUNT(*) FROM outbox_worker_config WHERE enabled = true`, &stats.ActiveWorkers},
+	}
+
+	for _, c := range counts {
+		if err := db.QueryRow(c.query).Scan(c.dest); err != nil {
+			return nil, err
+		}
+	}
 
 	return stats, nil
 }

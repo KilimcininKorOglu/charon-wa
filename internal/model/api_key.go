@@ -118,7 +118,7 @@ func ListAPIKeys(ctx context.Context, userID int) ([]APIKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var keys []APIKey
 	for rows.Next() {

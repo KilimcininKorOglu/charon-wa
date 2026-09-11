@@ -115,7 +115,7 @@ func GetAllWarmingTemplates(category string, userID int64, isAdmin bool) ([]Warm
 	if err != nil {
 		return nil, fmt.Errorf("failed to query warming templates: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var templates []WarmingTemplate
 	for rows.Next() {

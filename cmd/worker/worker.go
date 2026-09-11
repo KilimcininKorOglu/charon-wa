@@ -153,7 +153,9 @@ func (w *WorkerInstance) runCycle() {
 
 		if !strings.HasPrefix(cleaned, "62") || len(cleaned) < 10 {
 			w.logf("Invalid phone number format: %s", helper.SanitizeLogValue(destination))
-			UpdateOutboxFailed(w.ctx, msg.ID, "Invalid phone number format")
+			if err := UpdateOutboxFailed(w.ctx, msg.ID, "Invalid phone number format"); err != nil {
+				w.logf("CRITICAL: Failed to update status to failed for ID %d: %v", msg.ID, err)
+			}
 			return
 		}
 		destination = cleaned
@@ -165,7 +167,9 @@ func (w *WorkerInstance) runCycle() {
 		errMsg := fmt.Sprintf("Error fetching instances: %v", err)
 		w.logf("%s", helper.SanitizeLogValue(errMsg))
 		LogWorkerEvent(w.config.ID, w.config.WorkerName, "ERROR", errMsg)
-		UpdateOutboxFailed(context.Background(), msg.ID, errMsg)
+		if err := UpdateOutboxFailed(context.Background(), msg.ID, errMsg); err != nil {
+			w.logf("CRITICAL: Failed to update status to failed for ID %d: %v", msg.ID, err)
+		}
 		return
 	}
 
@@ -173,7 +177,9 @@ func (w *WorkerInstance) runCycle() {
 		errMsg := fmt.Sprintf("No used instances found in circle: %s", w.config.Circle)
 		w.logf("%s", helper.SanitizeLogValue(errMsg))
 		LogWorkerEvent(w.config.ID, w.config.WorkerName, "WARN", errMsg)
-		UpdateOutboxFailed(context.Background(), msg.ID, errMsg)
+		if err := UpdateOutboxFailed(context.Background(), msg.ID, errMsg); err != nil {
+			w.logf("CRITICAL: Failed to update status to failed for ID %d: %v", msg.ID, err)
+		}
 		return
 	}
 
@@ -205,7 +211,9 @@ func (w *WorkerInstance) runCycle() {
 		errMsg := fmt.Sprintf("Error calling API (Instance %s): %v", selectedInstance.InstanceID, err)
 		w.logf("%s", helper.SanitizeLogValue(errMsg))
 		LogWorkerEvent(w.config.ID, w.config.WorkerName, "ERROR", errMsg)
-		UpdateOutboxFailed(context.Background(), msg.ID, errMsg)
+		if err := UpdateOutboxFailed(context.Background(), msg.ID, errMsg); err != nil {
+			w.logf("CRITICAL: Failed to update status to failed for ID %d: %v", msg.ID, err)
+		}
 		return
 	}
 
@@ -304,7 +312,7 @@ func (w *WorkerInstance) sendWebhook(msg *OutboxMessage, status int, statusText 
 		w.logf("Webhook send error: %v", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)

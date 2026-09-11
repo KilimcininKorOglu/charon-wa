@@ -89,7 +89,7 @@ func EnqueueOutboxBatch(ctx context.Context, msgs []OutboxEnqueueRequest, client
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.PrepareContext(ctx,
 		`INSERT INTO outbox (destination, messages, status, application, type, priority, table_id, file, client_id, insertDateTime)
@@ -98,7 +98,7 @@ func EnqueueOutboxBatch(ctx context.Context, msgs []OutboxEnqueueRequest, client
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	ids := make([]int64, 0, len(msgs))
 	for _, msg := range msgs {
@@ -227,7 +227,7 @@ func ListOutboxMessages(ctx context.Context, filter OutboxFilter) ([]OutboxMessa
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var messages []OutboxMessage
 	for rows.Next() {
@@ -297,7 +297,7 @@ func EnqueueOutboxMessageWithLimit(ctx context.Context, msg OutboxEnqueueRequest
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", clientID); err != nil {
 		return 0, fmt.Errorf("failed to acquire lock: %w", err)
@@ -338,7 +338,7 @@ func EnqueueOutboxBatchWithLimit(ctx context.Context, msgs []OutboxEnqueueReques
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", clientID); err != nil {
 		return nil, fmt.Errorf("failed to acquire lock: %w", err)
@@ -358,7 +358,7 @@ func EnqueueOutboxBatchWithLimit(ctx context.Context, msgs []OutboxEnqueueReques
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	ids := make([]int64, 0, len(msgs))
 	for _, msg := range msgs {

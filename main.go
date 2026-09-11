@@ -217,10 +217,25 @@ func main() {
 	}
 
 	e.Use(middleware.RequestID())
-	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-		Format: `{"time":"${time_rfc3339_nano}","request_id":"${id}","remote_ip":"${remote_ip}",` +
-			`"method":"${method}","uri":"${uri}","status":${status},` +
-			`"latency_ms":${latency},"bytes_in":${bytes_in},"bytes_out":${bytes_out}}` + "\n",
+	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogRequestID:     true,
+		LogRemoteIP:      true,
+		LogMethod:        true,
+		LogURI:           true,
+		LogStatus:        true,
+		LogLatency:       true,
+		LogContentLength: true,
+		LogResponseSize:  true,
+		LogValuesFunc: func(_ echo.Context, v middleware.RequestLoggerValues) error {
+			bytesIn := v.ContentLength
+			if bytesIn == "" {
+				bytesIn = "0"
+			}
+			log.Printf(`{"time":"%s","request_id":"%s","remote_ip":"%s","method":"%s","uri":"%s","status":%d,"latency_ms":%d,"bytes_in":%s,"bytes_out":%d}`,
+				v.StartTime.Format(time.RFC3339Nano), v.RequestID, v.RemoteIP,
+				v.Method, v.URI, v.Status, v.Latency.Nanoseconds(), bytesIn, v.ResponseSize)
+			return nil
+		},
 	}))
 	e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
 		StackSize:         4 << 10,
@@ -444,7 +459,9 @@ func main() {
 			response["message"] = "Endpoint not found"
 		}
 
-		c.JSON(code, response)
+		if err := c.JSON(code, response); err != nil {
+			log.Printf("failed to write error response: %v", err)
+		}
 	}
 
 	// =====================================================

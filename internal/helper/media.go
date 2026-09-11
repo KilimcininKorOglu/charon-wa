@@ -190,7 +190,7 @@ func DownloadFile(url string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to download: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		return nil, "", fmt.Errorf("failed to download: status %d (%s)", resp.StatusCode, resp.Status)

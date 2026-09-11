@@ -545,7 +545,7 @@ func readMultipartUpload(file *multipart.FileHeader, maxSize int) ([]byte, error
 	if err != nil {
 		return nil, err
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	limit := int64(maxSize) + 1
 	buf := &bytes.Buffer{}

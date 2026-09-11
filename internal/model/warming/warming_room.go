@@ -297,7 +297,7 @@ func GetAllWarmingRooms(status string, userID int64, isAdmin bool) ([]WarmingRoo
 	if err != nil {
 		return nil, fmt.Errorf("failed to query warming rooms: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var rooms []WarmingRoom
 	for rows.Next() {
@@ -699,7 +699,7 @@ func GetActiveRoomsForWorker(limit int) ([]WarmingRoom, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query active rooms: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var rooms []WarmingRoom
 	for rows.Next() {

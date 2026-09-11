@@ -91,7 +91,7 @@ func GetAllWarmingLogs(roomID, status string, limit int, userID int64, isAdmin b
 	if err != nil {
 		return nil, fmt.Errorf("failed to query warming logs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var logs []WarmingLog
 	for rows.Next() {

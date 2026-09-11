@@ -71,9 +71,9 @@ func main() {
 
 	// 2. Initialize database
 	initDB()
-	defer ConfigDB.Close()
+	defer func() { _ = ConfigDB.Close() }()
 	if OutboxDB != ConfigDB {
-		defer OutboxDB.Close()
+		defer func() { _ = OutboxDB.Close() }()
 	}
 
 	// 3. Worker Configuration

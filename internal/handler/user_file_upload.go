@@ -41,7 +41,7 @@ func UploadAvatar(c echo.Context) error {
 	if err != nil {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to open uploaded file", "FILE_OPEN_ERROR", err.Error())
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	// Check magic bytes (file signature validation)
 	if err := helper.CheckMagicBytes(src); err != nil {
@@ -89,8 +89,11 @@ func UploadAvatar(c echo.Context) error {
 	user.AvatarURL = sql.NullString{String: avatarURL, Valid: true}
 	err = model.UpdateUser(user)
 	if err != nil {
-		// Rollback: delete uploaded file
-		helper.DeleteFile(filePath)
+		// Rollback: delete uploaded file. A failure here leaves an orphaned file
+		// on disk, so report it instead of dropping it.
+		if delErr := helper.DeleteFile(filePath); delErr != nil {
+			log.Printf("⚠️ Failed to remove orphaned avatar %s: %v", filepath.Base(filePath), delErr)
+		}
 
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to update user profile", "DATABASE_ERROR", err.Error())
 	}

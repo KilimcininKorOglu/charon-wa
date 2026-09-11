@@ -182,8 +182,9 @@ func (c *Client) WritePump() {
 			_ = c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 
 			if !ok {
-				// Channel closed
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				// Channel closed. The peer may already be gone, so a write error
+				// here is expected and the connection closes either way.
+				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
