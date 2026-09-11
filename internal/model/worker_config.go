@@ -286,6 +286,11 @@ func GetAvailableApplications(ctx context.Context, userID int64, isAdmin bool) (
 	var query string
 	var args []interface{}
 
+	// The executor follows the table: `outbox` lives in the outbox database,
+	// `outbox_worker_config` lives in the app database. They are the same
+	// handle only while OUTBOX_DATABASE_URL falls back to APP_DATABASE_URL.
+	db := database.OutboxDB
+
 	if isAdmin {
 		query = `
 			SELECT DISTINCT application
@@ -299,9 +304,10 @@ func GetAvailableApplications(ctx context.Context, userID int64, isAdmin bool) (
 			WHERE user_id = $1 AND application IS NOT NULL AND application != ''
 			ORDER BY application`
 		args = append(args, userID)
+		db = database.AppDB
 	}
 
-	rows, err := database.OutboxDB.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
