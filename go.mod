@@ -14,7 +14,7 @@ require (
 	github.com/vegidio/webp-go v0.0.0-20251220093554-d304ec2dc4e6
 	github.com/xuri/excelize/v2 v2.10.0
 	go.mau.fi/whatsmeow v0.0.0-20260116142645-06f473759141
-	golang.org/x/crypto v0.50.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/time v0.15.0
 	google.golang.org/genai v1.40.0
 	google.golang.org/protobuf v1.36.11
@@ -48,10 +48,10 @@ require (
 	go.mau.fi/util v0.9.5 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
-	golang.org/x/image v0.38.0 // indirect
-	golang.org/x/net v0.53.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/image v0.43.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	google.golang.org/grpc v1.79.3 // indirect
 )
