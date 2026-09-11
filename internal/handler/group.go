@@ -75,21 +75,9 @@ func SendGroupMessage(c echo.Context) error {
 		return ErrorResponse(c, 400, "Fields 'groupJid' and 'message' are required", "VALIDATION_ERROR", "")
 	}
 
-	session, err := service.GetSession(instanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "")
-	}
-
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "")
-	}
-
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "")
-	}
-
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "")
+	session, errResp := requireConnectedSession(c, instanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	// Parse group JID
@@ -136,21 +124,9 @@ func SendGroupMedia(c echo.Context) error {
 		return ErrorResponse(c, 400, "Field 'groupJid' is required", "VALIDATION_ERROR", "")
 	}
 
-	session, err := service.GetSession(instanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "")
-	}
-
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "")
-	}
-
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "")
-	}
-
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "")
+	session, errResp := requireConnectedSession(c, instanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	// Parse group JID
@@ -246,21 +222,9 @@ func SendGroupMediaURL(c echo.Context) error {
 		return ErrorResponse(c, 400, "Fields 'groupJid' and 'mediaUrl' are required", "VALIDATION_ERROR", "")
 	}
 
-	session, err := service.GetSession(instanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "")
-	}
-
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "")
-	}
-
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "")
-	}
-
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "")
+	session, errResp := requireConnectedSession(c, instanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	groupJID, err := types.ParseJID(req.GroupJID)
@@ -416,21 +380,9 @@ func SendGroupMessageByNumber(c echo.Context) error {
 	}
 
 	// 2. Get session from memory by instance_id
-	session, err := service.GetSession(inst.InstanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "")
-	}
-
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "")
-	}
-
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "")
-	}
-
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "")
+	session, errResp := requireConnectedSession(c, inst.InstanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	// Parse group JID
@@ -497,21 +449,9 @@ func SendGroupMediaByNumber(c echo.Context) error {
 	}
 
 	// 2. Get session from memory by instance_id
-	session, err := service.GetSession(inst.InstanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "")
-	}
-
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "")
-	}
-
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "")
-	}
-
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "")
+	session, errResp := requireConnectedSession(c, inst.InstanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	// Parse group JID
@@ -627,21 +567,9 @@ func SendGroupMediaURLByNumber(c echo.Context) error {
 	}
 
 	// 2. Get session from memory by instance_id
-	session, err := service.GetSession(inst.InstanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "")
-	}
-
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "")
-	}
-
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "")
-	}
-
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "")
+	session, errResp := requireConnectedSession(c, inst.InstanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	groupJID, err := types.ParseJID(req.GroupJID)

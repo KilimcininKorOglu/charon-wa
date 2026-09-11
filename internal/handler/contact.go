@@ -102,21 +102,9 @@ func GetContactDetail(c echo.Context) error {
 	instanceID := c.Param("instanceId")
 	jidParam := c.Param("jid")
 
-	session, err := service.GetSession(instanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "Please login first")
-	}
-
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "Please check /status endpoint")
-	}
-
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "Please reconnect")
-	}
-
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "Please scan QR code first")
+	session, errResp := requireConnectedSession(c, instanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	// Parse JID
@@ -190,21 +178,9 @@ func GetMutualGroups(c echo.Context) error {
 	instanceID := c.Param("instanceId")
 	jidParam := c.Param("jid")
 
-	session, err := service.GetSession(instanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "Please login first")
-	}
-
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "Please check /status endpoint")
-	}
-
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "Please reconnect")
-	}
-
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "Please scan QR code first")
+	session, errResp := requireConnectedSession(c, instanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	// Parse JID
@@ -317,21 +293,9 @@ func GetMutualGroups(c echo.Context) error {
 func GetContactList(c echo.Context) error {
 	instanceID := c.Param("instanceId")
 
-	session, err := service.GetSession(instanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "Please login first")
-	}
-
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "Please check /status endpoint")
-	}
-
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "Please reconnect")
-	}
-
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "Please scan QR code first")
+	session, errResp := requireConnectedSession(c, instanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	// Parse pagination params (default: page=1, limit=50, max=50)
@@ -468,21 +432,9 @@ func ExportContacts(c echo.Context) error {
 		return ErrorResponse(c, 400, "Invalid format", "INVALID_FORMAT", "Format must be 'xlsx' or 'csv'")
 	}
 
-	session, err := service.GetSession(instanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "Please login first")
-	}
-
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "Please check /status endpoint")
-	}
-
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "Please reconnect")
-	}
-
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "Please scan QR code first")
+	session, errResp := requireConnectedSession(c, instanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	// Get all contacts

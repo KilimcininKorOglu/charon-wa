@@ -32,21 +32,9 @@ func SendMessage(c echo.Context) error {
 		return ErrorResponse(c, 400, "Field 'to' and 'message' are required", "VALIDATION_ERROR", "")
 	}
 
-	session, err := service.GetSession(instanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "Please login first")
-	}
-
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "Please check /status endpoint")
-	}
-
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "Please reconnect")
-	}
-
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "Please scan QR code first")
+	session, errResp := requireConnectedSession(c, instanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	recipient, err := helper.FormatPhoneNumber(req.To)

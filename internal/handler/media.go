@@ -37,24 +37,9 @@ func SendMediaFile(c echo.Context) error {
 	}
 
 	// 1. CHECK SESSION EXISTS
-	session, err := service.GetSession(instanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "Please login first")
-	}
-
-	// 2. CHECK CONNECTION FLAG (from memory/database)
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "Please check /status endpoint")
-	}
-
-	// 3. CHECK REAL WHATSAPP CONNECTION (websocket)
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "Please reconnect")
-	}
-
-	// 4. CHECK IF LOGGED IN (has JID)
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "Please scan QR code first")
+	session, errResp := requireConnectedSession(c, instanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	// 5. FORMAT & VALIDATE PHONE NUMBER
@@ -163,24 +148,9 @@ func SendMediaURL(c echo.Context) error {
 	}
 
 	// 1. CHECK SESSION EXISTS
-	session, err := service.GetSession(instanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "Please login first")
-	}
-
-	// 2. CHECK CONNECTION FLAG (from memory/database)
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "Please check /status endpoint")
-	}
-
-	// 3. CHECK REAL WHATSAPP CONNECTION (websocket)
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "Please reconnect")
-	}
-
-	// 4. CHECK IF LOGGED IN (has JID)
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "Please scan QR code first")
+	session, errResp := requireConnectedSession(c, instanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	// 5. FORMAT & VALIDATE PHONE NUMBER
@@ -300,21 +270,9 @@ func SendMediaURLByNumber(c echo.Context) error {
 		}
 	}
 
-	session, err := service.GetSession(inst.InstanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "Please login / reconnect first")
-	}
-
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "Please check /status endpoint")
-	}
-
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "Please reconnect")
-	}
-
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "Please scan QR code first")
+	session, errResp := requireConnectedSession(c, inst.InstanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	recipient, err := helper.FormatPhoneNumber(req.To)
@@ -423,24 +381,9 @@ func SendMediaFileByNumber(c echo.Context) error {
 	}
 
 	// 2. Get session from memory by instance_id
-	session, err := service.GetSession(inst.InstanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "Please login / reconnect first")
-	}
-
-	// 3. CHECK CONNECTION FLAG (from memory/database)
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "Please check /status endpoint")
-	}
-
-	// 4. CHECK REAL WHATSAPP CONNECTION (websocket)
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "Please reconnect")
-	}
-
-	// 5. CHECK IF LOGGED IN (has JID)
-	if session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "Not logged in", "NOT_LOGGED_IN", "Please scan QR code first")
+	session, errResp := requireConnectedSession(c, inst.InstanceID)
+	if errResp != nil {
+		return errResp
 	}
 
 	// 6. FORMAT & VALIDATE DESTINATION PHONE NUMBER
