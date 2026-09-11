@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 )
@@ -17,9 +18,22 @@ var sharedHTTPClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
 
+// instancesCacheTTL is how long GetInstances serves the cached instance list
+// before it calls the API again.
+const instancesCacheTTL = 1 * time.Minute
+
 type InstanceInfo struct {
 	InstanceID  string `json:"instanceId"`
 	PhoneNumber string `json:"phoneNumber"`
+}
+
+// instanceEntry is one row of the API's instance list.
+type instanceEntry struct {
+	InstanceID  string `json:"instanceId"`
+	PhoneNumber string `json:"phoneNumber"`
+	Used        bool   `json:"used"`
+	Circle      string `json:"circle"`
+	Status      string `json:"status"`
 }
 
 type CharonClient struct {
@@ -28,27 +42,15 @@ type CharonClient struct {
 
 	// Caching instances to reduce API load
 	mu                sync.RWMutex
-	allInstancesCache []struct {
-		InstanceID  string `json:"instanceId"`
-		PhoneNumber string `json:"phoneNumber"`
-		Used        bool   `json:"used"`
-		Circle      string `json:"circle"`
-		Status      string `json:"status"`
-	}
-	cacheExpiry time.Time
+	allInstancesCache []instanceEntry
+	cacheExpiry       time.Time
 }
 
 type APIResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 	Data    struct {
-		Instances []struct {
-			InstanceID  string `json:"instanceId"`
-			PhoneNumber string `json:"phoneNumber"`
-			Used        bool   `json:"used"`
-			Circle      string `json:"circle"`
-			Status      string `json:"status"`
-		} `json:"instances"`
+		Instances []instanceEntry `json:"instances"`
 	} `json:"data"`
 }
 
@@ -63,34 +65,96 @@ func (c *CharonClient) setAuthHeader(req *http.Request) {
 	req.Header.Set("X-API-Key", c.APIKey)
 }
 
-func (c *CharonClient) GetInstances(ctx context.Context, circle string) ([]InstanceInfo, error) {
+// do sends req and returns the response. Every outbound call in this file goes
+// through it, so the SSRF justification lives in one place.
+//
+// The host and scheme come from c.BaseURL, which main reads once from
+// OUTBOX_API_BASEURL at startup. Callers only append a path this file builds,
+// and every path segment they interpolate is escaped, so no request data can
+// redirect the call to another host.
+func (c *CharonClient) do(req *http.Request) (*http.Response, error) {
+	c.setAuthHeader(req)
+	// #nosec G704
+	return sharedHTTPClient.Do(req)
+}
+
+// postJSON posts payload to path and returns the decoded success flag and message.
+func (c *CharonClient) postJSON(ctx context.Context, path string, payload map[string]string) (bool, string, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return false, "", err
+	}
+
+	// See CharonClient.do for why the target host cannot be influenced here.
+	// #nosec G704
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, bytes.NewReader(body))
+	if err != nil {
+		return false, "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.do(req)
+	if err != nil {
+		return false, "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, "", err
+	}
+
+	var res APIResponse
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return false, string(raw), err
+	}
+
+	return res.Success, res.Message, nil
+}
+
+// cachedInstances returns the instances of one circle from the cache. The second
+// result is false when the cache is empty or expired.
+func (c *CharonClient) cachedInstances(circle string) ([]InstanceInfo, bool) {
 	c.mu.RLock()
-	if c.allInstancesCache != nil && time.Now().Before(c.cacheExpiry) {
-		var instances []InstanceInfo
-		for _, inst := range c.allInstancesCache {
-			if inst.Used && inst.Circle == circle {
-				instances = append(instances, InstanceInfo{
-					InstanceID:  inst.InstanceID,
-					PhoneNumber: inst.PhoneNumber,
-				})
-			}
+	defer c.mu.RUnlock()
+
+	if c.allInstancesCache == nil || !time.Now().Before(c.cacheExpiry) {
+		return nil, false
+	}
+	return filterInstancesByCircle(c.allInstancesCache, circle), true
+}
+
+// filterInstancesByCircle keeps the in-use instances of one circle.
+func filterInstancesByCircle(all []instanceEntry, circle string) []InstanceInfo {
+	var instances []InstanceInfo
+	for _, inst := range all {
+		if inst.Used && inst.Circle == circle {
+			instances = append(instances, InstanceInfo{
+				InstanceID:  inst.InstanceID,
+				PhoneNumber: inst.PhoneNumber,
+			})
 		}
-		c.mu.RUnlock()
+	}
+	return instances
+}
+
+func (c *CharonClient) GetInstances(ctx context.Context, circle string) ([]InstanceInfo, error) {
+	if instances, ok := c.cachedInstances(circle); ok {
 		return instances, nil
 	}
-	c.mu.RUnlock()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", c.BaseURL+"/api/instances?all=true", nil)
+	// See CharonClient.do for why the target host cannot be influenced here.
+	// #nosec G704
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/api/instances?all=true", nil)
 	if err != nil {
 		return nil, err
 	}
-	c.setAuthHeader(req)
 
-	resp, err := sharedHTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var res APIResponse
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
@@ -99,136 +163,42 @@ func (c *CharonClient) GetInstances(ctx context.Context, circle string) ([]Insta
 
 	c.mu.Lock()
 	c.allInstancesCache = res.Data.Instances
-	c.cacheExpiry = time.Now().Add(1 * time.Minute)
+	c.cacheExpiry = time.Now().Add(instancesCacheTTL)
 	c.mu.Unlock()
 
-	var instances []InstanceInfo
-	for _, inst := range res.Data.Instances {
-		if inst.Used && inst.Circle == circle {
-			instances = append(instances, InstanceInfo{
-				InstanceID:  inst.InstanceID,
-				PhoneNumber: inst.PhoneNumber,
-			})
-		}
-	}
-
-	return instances, nil
+	return filterInstancesByCircle(res.Data.Instances, circle), nil
 }
 
 func (c *CharonClient) SendMessage(ctx context.Context, instanceID, to, message string) (bool, string, error) {
-	payload, _ := json.Marshal(map[string]string{
+	path := fmt.Sprintf("/api/send/%s", url.PathEscape(instanceID))
+	return c.postJSON(ctx, path, map[string]string{
 		"to":      to,
 		"message": message,
 	})
-
-	url := fmt.Sprintf("%s/api/send/%s", c.BaseURL, instanceID)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
-	if err != nil {
-		return false, "", err
-	}
-	c.setAuthHeader(req)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := sharedHTTPClient.Do(req)
-	if err != nil {
-		return false, "", err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	var res APIResponse
-	if err := json.Unmarshal(body, &res); err != nil {
-		return false, string(body), err
-	}
-
-	return res.Success, res.Message, nil
 }
 
 func (c *CharonClient) SendGroupMessage(ctx context.Context, instanceID, groupID, message string) (bool, string, error) {
-	payload, _ := json.Marshal(map[string]string{
+	path := fmt.Sprintf("/api/send-group/%s", url.PathEscape(instanceID))
+	return c.postJSON(ctx, path, map[string]string{
 		"message":  message,
 		"groupJid": groupID,
 	})
-
-	url := fmt.Sprintf("%s/api/send-group/%s", c.BaseURL, instanceID)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
-	if err != nil {
-		return false, "", err
-	}
-	c.setAuthHeader(req)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := sharedHTTPClient.Do(req)
-	if err != nil {
-		return false, "", err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	var res APIResponse
-	if err := json.Unmarshal(body, &res); err != nil {
-		return false, string(body), err
-	}
-
-	return res.Success, res.Message, nil
 }
 
 func (c *CharonClient) SendMediaURL(ctx context.Context, instanceID, to, mediaURL, caption string) (bool, string, error) {
-	payload, _ := json.Marshal(map[string]string{
+	path := fmt.Sprintf("/api/send/%s/media-url", url.PathEscape(instanceID))
+	return c.postJSON(ctx, path, map[string]string{
 		"to":       to,
 		"mediaUrl": mediaURL,
 		"caption":  caption,
 	})
-
-	url := fmt.Sprintf("%s/api/send/%s/media-url", c.BaseURL, instanceID)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
-	if err != nil {
-		return false, "", err
-	}
-	c.setAuthHeader(req)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := sharedHTTPClient.Do(req)
-	if err != nil {
-		return false, "", err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	var res APIResponse
-	if err := json.Unmarshal(body, &res); err != nil {
-		return false, string(body), err
-	}
-
-	return res.Success, res.Message, nil
 }
 
 func (c *CharonClient) SendGroupMediaURL(ctx context.Context, instanceID, groupID, mediaURL, caption string) (bool, string, error) {
-	payload, _ := json.Marshal(map[string]string{
+	path := fmt.Sprintf("/api/send-group/%s/media-url", url.PathEscape(instanceID))
+	return c.postJSON(ctx, path, map[string]string{
 		"groupJid": groupID,
 		"mediaUrl": mediaURL,
 		"message":  caption,
 	})
-
-	url := fmt.Sprintf("%s/api/send-group/%s/media-url", c.BaseURL, instanceID)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
-	if err != nil {
-		return false, "", err
-	}
-	c.setAuthHeader(req)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := sharedHTTPClient.Do(req)
-	if err != nil {
-		return false, "", err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	var res APIResponse
-	if err := json.Unmarshal(body, &res); err != nil {
-		return false, string(body), err
-	}
-
-	return res.Success, res.Message, nil
 }

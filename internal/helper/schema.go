@@ -716,6 +716,9 @@ func InitCustomSchema() {
 	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_outbox_claimed_at ON outbox(claimed_at) WHERE status = 3`)
 
 	// ─── API KEYS TABLE ─────────────────────────────────
+	// The literal is DDL. The key_hash and key_prefix names are column names,
+	// not credentials.
+	// #nosec G101
 	apiKeysSchema := `
 		CREATE TABLE IF NOT EXISTS api_keys (
 			id SERIAL PRIMARY KEY,

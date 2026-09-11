@@ -24,6 +24,8 @@ func RenderSpintax(text string) string {
 
 		spintax := result[start+1 : end]
 		options := strings.Split(spintax, "|")
+		// Spintax picks message wording, never a secret.
+		// #nosec G404
 		chosen := options[rand.Intn(len(options))]
 
 		result = result[:start] + chosen + result[end+1:]

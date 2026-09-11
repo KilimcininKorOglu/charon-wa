@@ -68,6 +68,8 @@ func (w *WorkerInstance) Start() {
 			sleepSeconds := w.config.IntervalSeconds
 			if w.config.IntervalMaxSeconds > w.config.IntervalSeconds {
 				rangeSec := w.config.IntervalMaxSeconds - w.config.IntervalSeconds + 1
+				// Poll interval jitter, not a secret.
+				// #nosec G404
 				sleepSeconds = w.config.IntervalSeconds + rand.Intn(rangeSec)
 			}
 
@@ -205,6 +207,8 @@ func (w *WorkerInstance) runCycle() {
 		go w.sendWebhook(msg, 1, "success", selectedInstance.PhoneNumber, "")
 
 		// Optional: delay after success to prevent mass-ban
+		// Send pacing jitter, not a secret.
+		// #nosec G404
 		time.Sleep(time.Duration(rand.Intn(2)+1) * time.Second)
 	} else {
 		log.Printf("[%s] Failed sending ID %d: %s", w.config.WorkerName, msg.ID, apiMsg)
@@ -253,6 +257,11 @@ func (w *WorkerInstance) sendWebhook(msg *OutboxMessage, status int, statusText 
 
 	log.Printf("[%s] Sending webhook to: %s", w.config.WorkerName, webhookURL)
 
+	// The URL is operator-supplied and guarded twice: handler.CreateWorkerConfig
+	// and handler.UpdateWorkerConfig run helper.ValidateExternalURL before the row
+	// is written, and workerWebhookClient dials through helper.SSRFSafeDialContext,
+	// which rejects a private or reserved IP at connect time even after a rebind.
+	// #nosec G704
 	req, err := http.NewRequest("POST", webhookURL, bytes.NewReader(body))
 	if err != nil {
 		log.Printf("[%s] Webhook request error: %v", w.config.WorkerName, err)
@@ -274,6 +283,7 @@ func (w *WorkerInstance) sendWebhook(msg *OutboxMessage, status int, statusText 
 		req.Header.Set("X-Charon-Signature", signature)
 	}
 
+	// #nosec G704
 	resp, err := workerWebhookClient.Do(req)
 	if err != nil {
 		log.Printf("[%s] Webhook send error: %v", w.config.WorkerName, err)

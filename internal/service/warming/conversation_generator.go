@@ -69,6 +69,8 @@ func GenerateConversationLines(category string, lineCount int) ([]TemplateLine, 
 		}
 
 		// Random select from message options
+		// Picks message wording, not a secret.
+		// #nosec G404
 		selectedMessage := templateLine.MessageOptions[rand.Intn(len(templateLine.MessageOptions))]
 
 		result = append(result, TemplateLine{
@@ -84,5 +86,7 @@ func GenerateConversationLines(category string, lineCount int) ([]TemplateLine, 
 
 // RandomTypingDuration returns random typing duration between 3-7 seconds
 func RandomTypingDuration() int {
+	// Conversation pacing jitter, not a secret.
+	// #nosec G404
 	return rand.Intn(5) + 3 // 3-7 seconds
 }

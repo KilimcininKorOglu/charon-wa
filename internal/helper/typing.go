@@ -23,6 +23,8 @@ func ApplyTypingDelay(client *whatsmeow.Client, recipient types.JID, messageLeng
 	if variationRange < 1 {
 		variationRange = 1
 	}
+	// Every rand call in this file picks a typing delay. None produces a secret.
+	// #nosec G404
 	variation := rand.Intn(variationRange) - int(float64(calculatedDelay)*0.2)
 	finalDelay := calculatedDelay + variation
 
@@ -37,6 +39,7 @@ func ApplyTypingDelay(client *whatsmeow.Client, recipient types.JID, messageLeng
 	if config.TypingDelayMin > 0 && config.TypingDelayMax >= config.TypingDelayMin {
 		rangeVal := config.TypingDelayMax - config.TypingDelayMin + 1
 		if rangeVal > 0 {
+			// #nosec G404
 			finalDelay = rand.Intn(rangeVal) + config.TypingDelayMin
 		}
 	}
@@ -48,8 +51,10 @@ func ApplyTypingDelay(client *whatsmeow.Client, recipient types.JID, messageLeng
 	time.Sleep(time.Duration(finalDelay*70/100) * time.Second)
 
 	// Brief pause (30% chance for messages > 50 chars)
+	// #nosec G404
 	if messageLength > 50 && rand.Intn(100) < 30 {
 		_ = client.SendChatPresence(context.Background(), recipient, types.ChatPresencePaused, types.ChatPresenceMediaText)
+		// #nosec G404
 		time.Sleep(time.Duration(rand.Intn(2)+1) * time.Second)
 		_ = client.SendChatPresence(context.Background(), recipient, types.ChatPresenceComposing, types.ChatPresenceMediaText)
 	}

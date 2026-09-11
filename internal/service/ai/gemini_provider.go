@@ -22,11 +22,26 @@ type ConversationMessage struct {
 	Message string
 }
 
+// maxOutputTokensLimit caps the token budget handed to the SDK. AI_DEFAULT_MAX_TOKENS
+// is an int read from the environment, so an operator can set a value that does not
+// fit in the int32 the SDK takes.
+const maxOutputTokensLimit = 1 << 20
+
+// clampMaxTokens converts the configured token budget to the int32 the SDK takes.
+// A value at or below zero falls back to the limit, because the SDK treats zero as
+// "no output".
+func clampMaxTokens(maxTokens int) int32 {
+	if maxTokens <= 0 || maxTokens > maxOutputTokensLimit {
+		return maxOutputTokensLimit
+	}
+	return int32(maxTokens)
+}
+
 // GenerateReply generates an AI response using Gemini (Official SDK)
 func GenerateReply(systemPrompt string, conversationHistory []ConversationMessage, temperature float64, maxTokens int) (string, error) {
 	// Validate API key
 	if config.GeminiAPIKey == "" {
-		return "", fmt.Errorf("Gemini API key not configured")
+		return "", fmt.Errorf("gemini API key not configured")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), geminiRequestTimeout)
@@ -67,7 +82,7 @@ func GenerateReply(systemPrompt string, conversationHistory []ConversationMessag
 
 	// Setup parameters and clean model name
 	temp := float32(temperature)
-	maxTok := int32(maxTokens)
+	maxTok := clampMaxTokens(maxTokens)
 	modelName := strings.TrimPrefix(config.GeminiDefaultModel, "models/")
 
 	// Call Gemini API
@@ -86,7 +101,7 @@ func GenerateReply(systemPrompt string, conversationHistory []ConversationMessag
 		},
 	)
 	if err != nil {
-		return "", fmt.Errorf("Gemini SDK Error: %w", err)
+		return "", fmt.Errorf("gemini SDK error: %w", err)
 	}
 
 	// Extract and return result with detailed logging

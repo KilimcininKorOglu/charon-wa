@@ -191,6 +191,8 @@ func calculateNextRun(minSec, maxSec int) time.Time {
 	if maxSec > minSec {
 		rangeVal := maxSec - minSec + 1
 		if rangeVal > 0 {
+			// Room execution jitter, not a secret.
+			// #nosec G404
 			interval = minSec + rand.Intn(rangeVal)
 		}
 	}

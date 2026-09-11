@@ -118,6 +118,9 @@ func ClaimPendingOutbox(ctx context.Context, applications []string, clientID int
 		RETURNING id_outbox, destination, messages, status, application, table_id, file, insertDateTime
 	`, tenantFilter, appFilter)
 
+	// The two interpolated fragments hold only $N placeholders this function
+	// generates. Every caller-supplied value travels in args, never in the SQL text.
+	// #nosec G701
 	row := OutboxDB.QueryRowContext(ctx, query, args...)
 	var msg OutboxMessage
 	err := row.Scan(&msg.ID, &msg.Destination, &msg.Messages, &msg.Status, &msg.Application, &msg.TableID, &msg.File, &msg.InsertDateTime)

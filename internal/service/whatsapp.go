@@ -76,6 +76,8 @@ func eventHandler(instanceID string) func(evt interface{}) {
 				// it likely means internet just recovered (mass reconnect)
 				if timeSinceLastReconnect < 5*time.Second && !lastReconnectTime.IsZero() {
 					// Add 3-8 second delay for this device
+					// Reconnect jitter, not a secret.
+					// #nosec G404
 					activationDelay = time.Duration(rand.Intn(6)+3) * time.Second
 					fmt.Printf("⏳ Staggered reconnect: delaying activation for %s by %v (disconnected at: %v)\n",
 						instanceID, activationDelay, disconnectTime.Format("15:04:05"))
@@ -406,6 +408,8 @@ func LoadAllDevices() error {
 		// Add random delay between reconnects (except first device)
 		if i > 0 {
 			// Random delay 3-10 seconds to avoid bot farm pattern
+			// Send-pacing jitter, not a secret.
+			// #nosec G404
 			delaySeconds := rand.Intn(8) + 3 // 3-10 seconds
 			fmt.Printf("⏳ Waiting %d seconds before reconnecting next device ...\n", delaySeconds)
 			time.Sleep(time.Duration(delaySeconds) * time.Second)
@@ -462,9 +466,12 @@ func CreateSession(instanceID string) (*model.Session, error) {
 
 	// Randomize OS to avoid uniformity
 	osOptions := []string{"Windows", "macOS", "Linux"}
+	// The device name and its suffix are cosmetic. Neither authenticates anything.
+	// #nosec G404
 	randomOS := osOptions[rand.Intn(len(osOptions))]
 
 	// Generate random suffix (4 digit hex) for unique identity
+	// #nosec G404
 	randomID := fmt.Sprintf("%04x", rand.Intn(0xffff))
 
 	// Combine OS with unique name: "Windows (Charon-a1b2)"

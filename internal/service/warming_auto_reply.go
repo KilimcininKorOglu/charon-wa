@@ -46,6 +46,8 @@ func HandleIncomingMessage(instanceID, sender, messageText string, chatJID types
 	session, err := GetSession(instanceID)
 	if err == nil && session.Client != nil {
 		// Random delay 2-3 seconds before marking as read (more natural)
+		// Read-receipt jitter, not a secret.
+		// #nosec G404
 		readDelay := time.Duration(2+rand.Intn(2)) * time.Second
 		time.Sleep(readDelay)
 
@@ -210,6 +212,8 @@ func calculateDelay(room *warmingModel.WarmingRoom) time.Duration {
 
 	// math/rand mirrors the pattern used by calculateNextRun; the wall-clock based
 	// modulo produced near-deterministic choices under bursty load.
+	// Reply-delay jitter, not a secret.
+	// #nosec G404
 	randomDelay := min + rand.Intn(max-min+1)
 	return time.Duration(randomDelay) * time.Second
 }
