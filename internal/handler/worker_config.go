@@ -6,6 +6,7 @@ import (
 	"charon/internal/service"
 	"database/sql"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
@@ -105,13 +106,7 @@ func CreateWorkerConfig(c echo.Context) error {
 		if err != nil {
 			return ErrorResponse(c, http.StatusInternalServerError, "Failed to verify circle access", "INTERNAL_ERROR", err.Error())
 		}
-		circleAllowed := false
-		for _, circle := range allowedCircles {
-			if circle == req.Circle {
-				circleAllowed = true
-				break
-			}
-		}
+		circleAllowed := slices.Contains(allowedCircles, req.Circle)
 		if !circleAllowed {
 			return ErrorResponse(c, http.StatusForbidden, "You don't have access to instances in this circle", "FORBIDDEN", "")
 		}
@@ -216,13 +211,7 @@ func UpdateWorkerConfig(c echo.Context) error {
 		if err != nil {
 			return ErrorResponse(c, http.StatusInternalServerError, "Failed to verify circle access", "INTERNAL_ERROR", err.Error())
 		}
-		circleAllowed := false
-		for _, circle := range allowedCircles {
-			if circle == req.Circle {
-				circleAllowed = true
-				break
-			}
-		}
+		circleAllowed := slices.Contains(allowedCircles, req.Circle)
 		if !circleAllowed {
 			return ErrorResponse(c, http.StatusForbidden, "You don't have access to instances in this circle", "FORBIDDEN", "")
 		}

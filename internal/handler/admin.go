@@ -213,7 +213,7 @@ func AssignInstance(c echo.Context) error {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to assign instance", "DB_ERROR", err.Error())
 	}
 
-	return SuccessResponse(c, http.StatusOK, "Instance assigned to user", map[string]interface{}{
+	return SuccessResponse(c, http.StatusOK, "Instance assigned to user", map[string]any{
 		"userId":     userID,
 		"instanceId": req.InstanceID,
 		"permission": permission,

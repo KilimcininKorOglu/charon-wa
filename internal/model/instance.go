@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -204,7 +205,7 @@ func GetAllInstances(limit, offset int, includeSessionData bool) ([]Instance, er
             created_at DESC
     `
 
-	args := []interface{}{}
+	args := []any{}
 	if limit > 0 {
 		query += " LIMIT $1 OFFSET $2"
 		args = append(args, limit, offset)
@@ -254,7 +255,7 @@ func GetAllInstances(limit, offset int, includeSessionData bool) ([]Instance, er
 		instances = append(instances, inst)
 	}
 
-	return instances, nil
+	return instances, rows.Err()
 }
 
 // Update for WhatsApp eventHandler
@@ -544,7 +545,7 @@ type UpdateInstanceFieldsRequest struct {
 func UpdateInstanceFields(instanceID string, req *UpdateInstanceFieldsRequest) error {
 	// Build dynamic query based on what fields are provided
 	query := "UPDATE instances SET "
-	args := []interface{}{}
+	args := []any{}
 	argCount := 1
 	updates := []string{}
 
@@ -570,14 +571,9 @@ func UpdateInstanceFields(instanceID string, req *UpdateInstanceFieldsRequest) e
 		return fmt.Errorf("no fields to update")
 	}
 
-	query += updates[0]
-	for i := 1; i < len(updates); i++ {
-		query += ", " + updates[i]
-	}
-
-	// The appended fragment holds only a $N placeholder. The value travels in args.
+	// Each fragment holds only a $N placeholder. Every value travels in args.
 	// #nosec G202
-	query += fmt.Sprintf(" WHERE instance_id = $%d", argCount)
+	query += strings.Join(updates, ", ") + fmt.Sprintf(" WHERE instance_id = $%d", argCount)
 	args = append(args, instanceID)
 
 	result, err := database.AppDB.Exec(query, args...)

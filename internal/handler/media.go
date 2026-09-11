@@ -137,7 +137,7 @@ func SendMediaFile(c echo.Context) error {
 	}
 
 	// 14. SUCCESS RESPONSE
-	return SuccessResponse(c, 200, "Media sent successfully", map[string]interface{}{
+	return SuccessResponse(c, 200, "Media sent successfully", map[string]any{
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"to":        to,
@@ -258,7 +258,7 @@ func SendMediaURL(c echo.Context) error {
 	}
 
 	// 14. SUCCESS RESPONSE
-	return SuccessResponse(c, 200, "Media sent successfully", map[string]interface{}{
+	return SuccessResponse(c, 200, "Media sent successfully", map[string]any{
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"to":        req.To,
@@ -380,7 +380,7 @@ func SendMediaURLByNumber(c echo.Context) error {
 		return ErrorResponse(c, 500, "Failed to send media", "SEND_FAILED", err.Error())
 	}
 
-	return SuccessResponse(c, 200, "Media sent successfully", map[string]interface{}{
+	return SuccessResponse(c, 200, "Media sent successfully", map[string]any{
 		"from":      phoneNumber,
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
@@ -521,7 +521,7 @@ func SendMediaFileByNumber(c echo.Context) error {
 	}
 
 	// 15. SUCCESS RESPONSE
-	return SuccessResponse(c, 200, "Media sent successfully", map[string]interface{}{
+	return SuccessResponse(c, 200, "Media sent successfully", map[string]any{
 		"from":      phoneNumber,
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),

@@ -104,7 +104,7 @@ func UploadAvatar(c echo.Context) error {
 		Action:       "avatar.upload",
 		ResourceType: sql.NullString{String: "user", Valid: true},
 		ResourceID:   sql.NullString{String: userClaims.Username, Valid: true},
-		Details: map[string]interface{}{
+		Details: map[string]any{
 			"original_filename": file.Filename,
 			"original_size":     file.Size,
 			"compressed_size":   len(compressedData),
@@ -117,10 +117,10 @@ func UploadAvatar(c echo.Context) error {
 
 	log.Printf("✅ Avatar uploaded successfully for user %d: %s", userClaims.UserID, avatarURL)
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	return c.JSON(http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Avatar uploaded successfully",
-		"data": map[string]interface{}{
+		"data": map[string]any{
 			"avatar_url":      avatarURL,
 			"original_size":   file.Size,
 			"compressed_size": len(compressedData),

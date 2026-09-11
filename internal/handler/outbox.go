@@ -66,7 +66,7 @@ func EnqueueOutbox(c echo.Context) error {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to enqueue message", "INTERNAL_ERROR", err.Error())
 	}
 
-	return SuccessResponse(c, http.StatusCreated, "Message enqueued", map[string]interface{}{
+	return SuccessResponse(c, http.StatusCreated, "Message enqueued", map[string]any{
 		"id_outbox": id,
 	})
 }
@@ -121,7 +121,7 @@ func EnqueueOutboxBatch(c echo.Context) error {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to enqueue batch", "INTERNAL_ERROR", err.Error())
 	}
 
-	return SuccessResponse(c, http.StatusCreated, "Batch enqueued", map[string]interface{}{
+	return SuccessResponse(c, http.StatusCreated, "Batch enqueued", map[string]any{
 		"ids":   ids,
 		"count": len(ids),
 	})
@@ -190,7 +190,7 @@ func ListOutboxMessages(c echo.Context) error {
 		messages = []model.OutboxMessage{}
 	}
 
-	return SuccessResponse(c, http.StatusOK, "Outbox messages retrieved", map[string]interface{}{
+	return SuccessResponse(c, http.StatusOK, "Outbox messages retrieved", map[string]any{
 		"messages": messages,
 		"total":    total,
 	})

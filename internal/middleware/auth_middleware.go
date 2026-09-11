@@ -23,7 +23,7 @@ func SessionOrAPIKeyMiddleware() echo.MiddlewareFunc {
 			if apiKey := c.Request().Header.Get("X-API-Key"); apiKey != "" {
 				key, err := model.ValidateAPIKey(c.Request().Context(), apiKey)
 				if err != nil {
-					return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+					return c.JSON(http.StatusUnauthorized, map[string]any{
 						"success": false,
 						"message": "Invalid or disabled API key",
 						"error":   map[string]string{"code": "INVALID_API_KEY"},
@@ -48,7 +48,7 @@ func SessionOrAPIKeyMiddleware() echo.MiddlewareFunc {
 
 			cookie, err := c.Cookie("session")
 			if err != nil || cookie.Value == "" {
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+				return c.JSON(http.StatusUnauthorized, map[string]any{
 					"success": false,
 					"message": "Authentication required",
 					"error":   map[string]string{"code": "UNAUTHORIZED"},
@@ -58,21 +58,21 @@ func SessionOrAPIKeyMiddleware() echo.MiddlewareFunc {
 			session, err := service.ValidateSession(cookie.Value)
 			if err != nil {
 				if err == model.ErrSessionNotFound || err == model.ErrSessionExpired {
-					return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+					return c.JSON(http.StatusUnauthorized, map[string]any{
 						"success": false,
 						"message": "Session expired or invalid",
 						"error":   map[string]string{"code": "SESSION_EXPIRED"},
 					})
 				}
 				if err == model.ErrUserInactive {
-					return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+					return c.JSON(http.StatusUnauthorized, map[string]any{
 						"success": false,
 						"message": "Account is disabled",
 						"error":   map[string]string{"code": "USER_INACTIVE"},
 					})
 				}
 				log.Printf("Session validation error: %v", err)
-				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+				return c.JSON(http.StatusInternalServerError, map[string]any{
 					"success": false,
 					"message": "Internal server error",
 				})

@@ -111,7 +111,7 @@ func (w *WorkerInstance) runCycle() {
 	// Supports: "App1" (Single), "App1, App2, App3" (Multi), "*" or "" (Wildcard)
 	var applications []string
 	if w.config.Application != "*" && w.config.Application != "" {
-		for _, a := range strings.Split(w.config.Application, ",") {
+		for a := range strings.SplitSeq(w.config.Application, ",") {
 			if trimmed := strings.TrimSpace(a); trimmed != "" {
 				applications = append(applications, trimmed)
 			}
@@ -257,10 +257,10 @@ func (w *WorkerInstance) sendWebhook(msg *OutboxMessage, status int, statusText 
 		return
 	}
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"event":     "outbox.processed",
 		"timestamp": time.Now().UTC(),
-		"data": map[string]interface{}{
+		"data": map[string]any{
 			"id_outbox":   msg.ID,
 			"status":      status,
 			"status_text": statusText,

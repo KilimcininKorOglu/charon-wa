@@ -17,7 +17,7 @@ type AuditLog struct {
 	Action       string
 	ResourceType sql.NullString
 	ResourceID   sql.NullString
-	Details      map[string]interface{}
+	Details      map[string]any
 	IPAddress    sql.NullString
 	UserAgent    sql.NullString
 	CreatedAt    time.Time
@@ -33,7 +33,7 @@ func LogAction(log *AuditLog) error {
 	}
 
 	// Convert details map to JSONB
-	var detailsJSON interface{}
+	var detailsJSON any
 	if len(log.Details) > 0 {
 		jsonBytes, err := json.Marshal(log.Details)
 		if err != nil {

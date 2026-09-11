@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -17,13 +18,7 @@ func TestRenderSpintaxSimple(t *testing.T) {
 	input := "{Hello|Hi|Hey}"
 	result := RenderSpintax(input)
 	valid := []string{"Hello", "Hi", "Hey"}
-	found := false
-	for _, v := range valid {
-		if result == v {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(valid, result)
 	if !found {
 		t.Errorf("RenderSpintax(%q) = %q, expected one of %v", input, result, valid)
 	}

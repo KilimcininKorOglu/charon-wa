@@ -3,6 +3,7 @@ package handler
 import (
 	"log"
 	"net/http"
+	"slices"
 
 	"charon/config"
 	"charon/internal/model"
@@ -23,12 +24,7 @@ var upgrader = websocket.Upgrader{
 		if origin == "" {
 			return true // Non-browser clients (curl, Postman)
 		}
-		for _, allowed := range config.CorsAllowOrigins {
-			if allowed == origin {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(config.CorsAllowOrigins, origin)
 	},
 }
 
@@ -38,7 +34,7 @@ func WebSocketHandler(hub *ws.Hub) echo.HandlerFunc {
 		// Read session cookie from the HTTP upgrade request
 		cookie, err := c.Request().Cookie("session")
 		if err != nil || cookie.Value == "" {
-			return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+			return c.JSON(http.StatusUnauthorized, map[string]any{
 				"success": false,
 				"message": "Authentication required. Session cookie missing.",
 			})
@@ -47,7 +43,7 @@ func WebSocketHandler(hub *ws.Hub) echo.HandlerFunc {
 		// Validate session
 		session, err := model.GetAuthSessionByToken(cookie.Value)
 		if err != nil {
-			return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+			return c.JSON(http.StatusUnauthorized, map[string]any{
 				"success": false,
 				"message": "Invalid or expired session",
 			})

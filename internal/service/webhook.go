@@ -31,9 +31,9 @@ var (
 )
 
 type WebhookPayload struct {
-	Event     string      `json:"event"`
-	Timestamp time.Time   `json:"timestamp"`
-	Data      interface{} `json:"data"`
+	Event     string    `json:"event"`
+	Timestamp time.Time `json:"timestamp"`
+	Data      any       `json:"data"`
 }
 
 // Get webhook config with caching + TTL
@@ -120,7 +120,7 @@ var webhookHTTPClient = &http.Client{
 }
 
 // Refactored function - now uses cache
-func SendIncomingMessageWebhook(instanceID string, data map[string]interface{}) {
+func SendIncomingMessageWebhook(instanceID string, data map[string]any) {
 	// Get webhook config from cache (not DB!)
 	config, err := GetWebhookConfig(instanceID)
 	if err != nil || config.URL == "" {
@@ -154,7 +154,7 @@ func SendIncomingMessageWebhook(instanceID string, data map[string]interface{}) 
 
 	go func() {
 		attempts := len(webhookRetryBackoffs) + 1
-		for i := 0; i < attempts; i++ {
+		for i := range attempts {
 			req, err := http.NewRequest("POST", config.URL, bytes.NewReader(body))
 			if err != nil {
 				log.Printf("webhook: new request error: %v", err)

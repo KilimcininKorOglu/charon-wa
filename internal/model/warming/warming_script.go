@@ -83,7 +83,7 @@ func GetAllWarmingScripts(q, category string, userID int64, isAdmin bool) ([]War
 		FROM warming_scripts
 		WHERE 1=1
 	`
-	args := []interface{}{}
+	args := []any{}
 	argCount := 1
 
 	// RBAC: Filter by ownership for non-admin users

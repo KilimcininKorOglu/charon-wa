@@ -149,7 +149,7 @@ func (h *Hub) shouldDeliverEvent(client *Client, event WsEvent) bool {
 // (whatsapp.go, QR handler) to avoid direct dependency on Hub.
 type RealtimePublisher interface {
 	Publish(event WsEvent)
-	BroadcastToInstance(instanceID string, data map[string]interface{})
+	BroadcastToInstance(instanceID string, data map[string]any)
 }
 
 // NewClient creates a new Client object from a Gorilla WebSocket connection.
@@ -241,7 +241,7 @@ func (c *Client) ReadPump() {
 
 // extractInstanceID tries to pull an instance_id from the event data.
 // Supports typed event payloads and generic map[string]interface{}.
-func extractInstanceID(data interface{}) string {
+func extractInstanceID(data any) string {
 	switch d := data.(type) {
 	case QRGeneratedData:
 		return d.InstanceID
@@ -253,7 +253,7 @@ func extractInstanceID(data interface{}) string {
 		return d.InstanceID
 	case WarmingMessageData:
 		return d.SenderInstanceID
-	case map[string]interface{}:
+	case map[string]any:
 		if id, ok := d["instance_id"].(string); ok {
 			return id
 		}
@@ -262,7 +262,7 @@ func extractInstanceID(data interface{}) string {
 }
 
 // BroadcastToInstance sends a message to clients listening to a specific instance
-func (h *Hub) BroadcastToInstance(instanceID string, data map[string]interface{}) {
+func (h *Hub) BroadcastToInstance(instanceID string, data map[string]any) {
 	event := WsEvent{
 		Event:     "incoming_message",
 		Timestamp: time.Now(),

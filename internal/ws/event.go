@@ -21,9 +21,9 @@ const (
 // WsEvent is the common envelope for every message sent via WebSocket.
 // FE can switch on the Event field, then cast Data to the appropriate type.
 type WsEvent struct {
-	Event     string      `json:"event"`     // Event name, one of the constants above
-	Timestamp time.Time   `json:"timestamp"` // Time event was created (UTC)
-	Data      interface{} `json:"data"`      // Event-specific payload
+	Event     string    `json:"event"`     // Event name, one of the constants above
+	Timestamp time.Time `json:"timestamp"` // Time event was created (UTC)
+	Data      any       `json:"data"`      // Event-specific payload
 
 	// InstanceID is used for server-side routing only — not serialized to JSON.
 	// Set by Publish callers to enable user-scoped event filtering.

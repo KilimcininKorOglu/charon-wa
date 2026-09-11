@@ -57,7 +57,7 @@ func GenerateConversationLines(category string, lineCount int) ([]TemplateLine, 
 	var result []TemplateLine
 	templateIndex := 0
 
-	for i := 0; i < lineCount; i++ {
+	for range lineCount {
 		// Loop through template lines
 		if templateIndex >= len(templateLines) {
 			templateIndex = 0 // Restart from beginning

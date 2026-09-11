@@ -3,6 +3,7 @@ package middleware
 
 import (
 	"net/http"
+	"slices"
 
 	"charon/internal/service"
 
@@ -15,7 +16,7 @@ func RequireAdmin(next echo.HandlerFunc) echo.HandlerFunc {
 		// Get claims from context (set by session/API key middleware)
 		userClaims, ok := c.Get("user_claims").(*service.Claims)
 		if !ok || userClaims.Role != "admin" {
-			return c.JSON(http.StatusForbidden, map[string]interface{}{
+			return c.JSON(http.StatusForbidden, map[string]any{
 				"success": false,
 				"message": "Access denied. Admin role required.",
 				"error": map[string]string{
@@ -34,22 +35,16 @@ func RequireRole(roles ...string) echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			userClaims, ok := c.Get("user_claims").(*service.Claims)
 			if !ok {
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+				return c.JSON(http.StatusUnauthorized, map[string]any{
 					"success": false,
 					"message": "Unauthorized",
 				})
 			}
 
-			roleAllowed := false
-			for _, role := range roles {
-				if userClaims.Role == role {
-					roleAllowed = true
-					break
-				}
-			}
+			roleAllowed := slices.Contains(roles, userClaims.Role)
 
 			if !roleAllowed {
-				return c.JSON(http.StatusForbidden, map[string]interface{}{
+				return c.JSON(http.StatusForbidden, map[string]any{
 					"success": false,
 					"message": "Access denied. Insufficient permissions.",
 				})

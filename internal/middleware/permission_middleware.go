@@ -18,7 +18,7 @@ func RequireInstanceAccess() echo.MiddlewareFunc {
 			// Get claims from context (set by session/API key middleware)
 			userClaims, ok := c.Get("user_claims").(*service.Claims)
 			if !ok || userClaims == nil {
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+				return c.JSON(http.StatusUnauthorized, map[string]any{
 					"success": false,
 					"message": "Authentication required",
 				})
@@ -31,7 +31,7 @@ func RequireInstanceAccess() echo.MiddlewareFunc {
 
 			// Viewer role is read-only; block all instance write operations
 			if userClaims.Role == "viewer" {
-				return c.JSON(http.StatusForbidden, map[string]interface{}{
+				return c.JSON(http.StatusForbidden, map[string]any{
 					"success": false,
 					"message": "Viewers do not have access to instance operations",
 				})
@@ -44,7 +44,7 @@ func RequireInstanceAccess() echo.MiddlewareFunc {
 			}
 
 			if instanceID == "" {
-				return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				return c.JSON(http.StatusBadRequest, map[string]any{
 					"success": false,
 					"message": "Instance ID is required",
 				})
@@ -54,12 +54,12 @@ func RequireInstanceAccess() echo.MiddlewareFunc {
 			_, err := model.CheckUserInstancePermission(userClaims.UserID, instanceID)
 			if err != nil {
 				if err == model.ErrNoPermission {
-					return c.JSON(http.StatusForbidden, map[string]interface{}{
+					return c.JSON(http.StatusForbidden, map[string]any{
 						"success": false,
 						"message": "You do not have access to this instance",
 					})
 				}
-				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+				return c.JSON(http.StatusInternalServerError, map[string]any{
 					"success": false,
 					"message": "Failed to verify instance access",
 				})
@@ -79,7 +79,7 @@ func RequirePhoneNumberAccess() echo.MiddlewareFunc {
 			// Get claims from context (set by session/API key middleware)
 			userClaims, ok := c.Get("user_claims").(*service.Claims)
 			if !ok || userClaims == nil {
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+				return c.JSON(http.StatusUnauthorized, map[string]any{
 					"success": false,
 					"message": "Authentication required",
 				})
@@ -92,7 +92,7 @@ func RequirePhoneNumberAccess() echo.MiddlewareFunc {
 
 			// Viewer role is read-only; block all phone-number-scoped operations
 			if userClaims.Role == "viewer" {
-				return c.JSON(http.StatusForbidden, map[string]interface{}{
+				return c.JSON(http.StatusForbidden, map[string]any{
 					"success": false,
 					"message": "Viewers do not have access to instance operations",
 				})
@@ -101,7 +101,7 @@ func RequirePhoneNumberAccess() echo.MiddlewareFunc {
 			// Get phoneNumber from path params
 			phoneNumber := c.Param("phoneNumber")
 			if phoneNumber == "" {
-				return c.JSON(http.StatusBadRequest, map[string]interface{}{
+				return c.JSON(http.StatusBadRequest, map[string]any{
 					"success": false,
 					"message": "Phone number is required",
 				})
@@ -112,7 +112,7 @@ func RequirePhoneNumberAccess() echo.MiddlewareFunc {
 			// numbers exist on the platform.
 			inst, err := model.GetActiveInstanceByPhoneNumber(phoneNumber)
 			if err != nil {
-				return c.JSON(http.StatusForbidden, map[string]interface{}{
+				return c.JSON(http.StatusForbidden, map[string]any{
 					"success": false,
 					"message": "You do not have access to this phone number",
 				})
@@ -123,7 +123,7 @@ func RequirePhoneNumberAccess() echo.MiddlewareFunc {
 			if err != nil {
 				// Treat permission errors and verification errors identically from
 				// the caller's perspective — log internally, expose uniform 403.
-				return c.JSON(http.StatusForbidden, map[string]interface{}{
+				return c.JSON(http.StatusForbidden, map[string]any{
 					"success": false,
 					"message": "You do not have access to this phone number",
 				})

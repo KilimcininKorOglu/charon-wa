@@ -16,7 +16,7 @@ func APIKeyAuthMiddleware() echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			apiKey := c.Request().Header.Get("X-API-Key")
 			if apiKey == "" {
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+				return c.JSON(http.StatusUnauthorized, map[string]any{
 					"success": false,
 					"message": "API key required",
 					"error": map[string]string{
@@ -27,7 +27,7 @@ func APIKeyAuthMiddleware() echo.MiddlewareFunc {
 
 			key, err := model.ValidateAPIKey(c.Request().Context(), apiKey)
 			if err != nil {
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+				return c.JSON(http.StatusUnauthorized, map[string]any{
 					"success": false,
 					"message": "Invalid or disabled API key",
 					"error": map[string]string{

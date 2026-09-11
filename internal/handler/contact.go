@@ -74,7 +74,7 @@ func CheckNumber(c echo.Context) error {
 		return ErrorResponse(c, 400, "Unable to verify number", "VERIFICATION_ERROR", "")
 	}
 
-	return SuccessResponse(c, 200, "Phone number checked", map[string]interface{}{
+	return SuccessResponse(c, 200, "Phone number checked", map[string]any{
 		"phone":              req.Phone,
 		"isRegistered":       isRegistered[0].IsIn,
 		"jid":                isRegistered[0].JID.String(),
@@ -132,7 +132,7 @@ func GetContactDetail(c echo.Context) error {
 	}
 
 	// Build contact detail
-	contactDetail := map[string]interface{}{
+	contactDetail := map[string]any{
 		"jid":            jid.String(),
 		"phoneNumber":    jid.User,
 		"name":           contact.FullName,
@@ -253,7 +253,7 @@ func GetMutualGroups(c echo.Context) error {
 
 	// Skip if it's a group
 	if jid.Server == "g.us" {
-		return SuccessResponse(c, 200, "Mutual groups retrieved successfully", map[string]interface{}{
+		return SuccessResponse(c, 200, "Mutual groups retrieved successfully", map[string]any{
 			"jid":          jid.String(),
 			"mutualGroups": []string{},
 		})
@@ -306,7 +306,7 @@ func GetMutualGroups(c echo.Context) error {
 
 	log.Printf("🎉 [Mutual Groups] Search complete! Found %d mutual groups", len(mutualGroups))
 
-	return SuccessResponse(c, 200, "Mutual groups retrieved successfully", map[string]interface{}{
+	return SuccessResponse(c, 200, "Mutual groups retrieved successfully", map[string]any{
 		"jid":          jid.String(),
 		"mutualGroups": mutualGroups,
 		"total":        len(mutualGroups),
@@ -423,7 +423,7 @@ func GetContactList(c echo.Context) error {
 
 	// Handle out of range page
 	if startIndex >= totalContacts {
-		return SuccessResponse(c, 200, "Contact list retrieved successfully", map[string]interface{}{
+		return SuccessResponse(c, 200, "Contact list retrieved successfully", map[string]any{
 			"total":       totalContacts,
 			"page":        page,
 			"limit":       limit,
@@ -441,7 +441,7 @@ func GetContactList(c echo.Context) error {
 
 	paginatedContacts := allContacts[startIndex:endIndex]
 
-	return SuccessResponse(c, 200, "Contact list retrieved successfully", map[string]interface{}{
+	return SuccessResponse(c, 200, "Contact list retrieved successfully", map[string]any{
 		"total":       totalContacts,
 		"page":        page,
 		"limit":       limit,

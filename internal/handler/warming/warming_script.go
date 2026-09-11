@@ -73,7 +73,7 @@ func GetAllWarmingScripts(c echo.Context) error {
 		responses = append(responses, warmingModel.ToWarmingScriptResponse(script))
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, "Warming scripts retrieved successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Warming scripts retrieved successfully", map[string]any{
 		"total":   len(responses),
 		"scripts": responses,
 	})
@@ -158,7 +158,7 @@ func UpdateWarmingScript(c echo.Context) error {
 		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to update warming script", "UPDATE_FAILED", err.Error())
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, "Warming script updated successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Warming script updated successfully", map[string]any{
 		"id": id,
 	})
 }
@@ -199,7 +199,7 @@ func DeleteWarmingScript(c echo.Context) error {
 		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to delete warming script", "DELETE_FAILED", err.Error())
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, "Warming script deleted successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Warming script deleted successfully", map[string]any{
 		"id": id,
 	})
 }

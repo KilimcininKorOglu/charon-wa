@@ -132,7 +132,7 @@ func GetOutboxMessage(ctx context.Context, id int64, clientID int) (*OutboxMessa
 	                 status, priority, application, sendingDateTime, insertDateTime, table_id, file, error_count, msg_error
 	          FROM outbox WHERE id_outbox = $1`
 
-	args := []interface{}{id}
+	args := []any{id}
 	if clientID > 0 {
 		query += " AND client_id = $2"
 		args = append(args, clientID)
@@ -174,7 +174,7 @@ func GetOutboxMessage(ctx context.Context, id int64, clientID int) (*OutboxMessa
 // ListOutboxMessages returns paginated outbox messages with filtering
 func ListOutboxMessages(ctx context.Context, filter OutboxFilter) ([]OutboxMessage, int, error) {
 	where := []string{}
-	args := []interface{}{}
+	args := []any{}
 	idx := 1
 
 	if filter.ClientID > 0 {
@@ -210,10 +210,7 @@ func ListOutboxMessages(ctx context.Context, filter OutboxFilter) ([]OutboxMessa
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	page := filter.Page
-	if page < 1 {
-		page = 1
-	}
+	page := max(filter.Page, 1)
 	offset := (page - 1) * limit
 
 	dataQuery := fmt.Sprintf(

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"math/rand"
 	"sync"
 	"time"
@@ -18,7 +19,6 @@ import (
 
 	"go.mau.fi/whatsmeow/store"
 	waLog "go.mau.fi/whatsmeow/util/log"
-	"google.golang.org/protobuf/proto"
 
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/proto/waCompanionReg"
@@ -46,8 +46,8 @@ var (
 )
 
 // Event handler for connection events
-func eventHandler(instanceID string) func(evt interface{}) {
-	return func(evt interface{}) {
+func eventHandler(instanceID string) func(evt any) {
+	return func(evt any) {
 		switch v := evt.(type) {
 
 		case *events.Connected:
@@ -345,7 +345,7 @@ func eventHandler(instanceID string) func(evt interface{}) {
 			}
 
 			// Prepare Payload (used by WS & Webhook)
-			payload := map[string]interface{}{
+			payload := map[string]any{
 				"instance_id": instanceID,
 				"from":        v.Info.Sender.String(),
 				"from_me":     v.Info.IsFromMe,
@@ -358,7 +358,7 @@ func eventHandler(instanceID string) func(evt interface{}) {
 
 			// Broadcast to WebSocket (if enabled)
 			if config.EnableWebsocketIncomingMessage && Realtime != nil {
-				Realtime.BroadcastToInstance(instanceID, map[string]interface{}{
+				Realtime.BroadcastToInstance(instanceID, map[string]any{
 					"event": "incoming_message",
 					"data":  payload,
 				})
@@ -478,9 +478,9 @@ func CreateSession(instanceID string) (*model.Session, error) {
 	customOsName := fmt.Sprintf("%s (Charon-%s)", randomOS, randomID)
 
 	// Set Global Device Props (will be used by NewDevice)
-	store.DeviceProps.Os = proto.String(customOsName)
+	store.DeviceProps.Os = new(customOsName)
 	store.DeviceProps.PlatformType = waProto.DeviceProps_DESKTOP.Enum()
-	store.DeviceProps.RequireFullSync = proto.Bool(false)
+	store.DeviceProps.RequireFullSync = new(false)
 
 	// Create new device
 	deviceStore := database.Container.NewDevice()
@@ -521,9 +521,7 @@ func GetAllSessions() map[string]*model.Session {
 	defer sessionsLock.RUnlock()
 
 	result := make(map[string]*model.Session)
-	for k, v := range sessions {
-		result[k] = v
-	}
+	maps.Copy(result, sessions)
 
 	return result
 }

@@ -89,7 +89,7 @@ func GetAllWarmingRooms(c echo.Context) error {
 		responses = append(responses, warmingModel.ToWarmingRoomResponse(room))
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, "Rooms retrieved successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Rooms retrieved successfully", map[string]any{
 		"total": len(responses),
 		"rooms": responses,
 	})
@@ -164,7 +164,7 @@ func UpdateWarmingRoom(c echo.Context) error {
 		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to update room", "UPDATE_FAILED", err.Error())
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, "Room updated successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Room updated successfully", map[string]any{
 		"id": id,
 	})
 }
@@ -188,7 +188,7 @@ func DeleteWarmingRoom(c echo.Context) error {
 	// Cleanup auto-reply state for deleted room
 	service.CleanupReplyTime(id)
 
-	return handler.SuccessResponse(c, http.StatusOK, "Room deleted successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Room deleted successfully", map[string]any{
 		"id": id,
 	})
 }
@@ -229,7 +229,7 @@ func UpdateRoomStatus(c echo.Context) error {
 		service.CleanupReplyTime(id)
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, "Room status updated successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Room status updated successfully", map[string]any{
 		"id":     id,
 		"status": req.Status,
 	})
@@ -254,7 +254,7 @@ func RestartWarmingRoom(c echo.Context) error {
 	// Reset auto-reply cooldown so the restarted room starts fresh.
 	service.CleanupReplyTime(id)
 
-	return handler.SuccessResponse(c, http.StatusOK, "Room restarted successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Room restarted successfully", map[string]any{
 		"id":               id,
 		"current_sequence": 0,
 		"status":           "ACTIVE",

@@ -65,7 +65,7 @@ func GetAllUsers(params ListUsersParams) (*PaginatedUsers, error) {
 		FROM users WHERE 1=1
 	`
 
-	var args []interface{}
+	var args []any
 	argIdx := 1
 
 	if params.Search != "" {

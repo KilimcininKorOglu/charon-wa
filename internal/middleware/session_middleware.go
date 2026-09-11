@@ -45,7 +45,7 @@ func SessionAuthMiddleware() echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			cookie, err := c.Cookie("session")
 			if err != nil || cookie.Value == "" {
-				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+				return c.JSON(http.StatusUnauthorized, map[string]any{
 					"success": false,
 					"message": "Authentication required",
 					"error":   map[string]string{"code": "UNAUTHORIZED"},
@@ -55,21 +55,21 @@ func SessionAuthMiddleware() echo.MiddlewareFunc {
 			session, err := service.ValidateSession(cookie.Value)
 			if err != nil {
 				if err == model.ErrSessionNotFound || err == model.ErrSessionExpired {
-					return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+					return c.JSON(http.StatusUnauthorized, map[string]any{
 						"success": false,
 						"message": "Session expired or invalid",
 						"error":   map[string]string{"code": "SESSION_EXPIRED"},
 					})
 				}
 				if err == model.ErrUserInactive {
-					return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+					return c.JSON(http.StatusUnauthorized, map[string]any{
 						"success": false,
 						"message": "Account is disabled",
 						"error":   map[string]string{"code": "USER_INACTIVE"},
 					})
 				}
 				log.Printf("Session validation error: %v", err)
-				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+				return c.JSON(http.StatusInternalServerError, map[string]any{
 					"success": false,
 					"message": "Internal server error",
 				})

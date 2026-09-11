@@ -83,7 +83,7 @@ func SetWebhookConfig(c echo.Context) error {
 	// Invalidate cache after updating webhook config
 	service.InvalidateWebhookCache(instanceID)
 
-	return SuccessResponse(c, http.StatusOK, "Webhook config updated", map[string]interface{}{
+	return SuccessResponse(c, http.StatusOK, "Webhook config updated", map[string]any{
 		"instanceId": instanceID,
 		"webhookUrl": req.URL,
 		"secret":     effectiveSecret, // user must store this securely

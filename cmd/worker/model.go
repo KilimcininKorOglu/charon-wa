@@ -86,7 +86,7 @@ func FetchWorkerConfigs(ctx context.Context) ([]WorkerConfig, error) {
 // clientID=0 means "admin worker" and matches any client_id (including legacy NULL rows);
 // any other value enforces tenant isolation via client_id = $N.
 func ClaimPendingOutbox(ctx context.Context, applications []string, clientID int) (*OutboxMessage, error) {
-	var args []interface{}
+	var args []any
 	appFilter := ""
 	tenantFilter := ""
 
@@ -186,7 +186,7 @@ func LogWorkerEvent(workerID int, workerName, level, message string) {
 		INSERT INTO worker_system_logs (worker_id, worker_name, level, message)
 		VALUES ($1, $2, $3, $4)
 	`
-	var wID interface{}
+	var wID any
 	if workerID > 0 {
 		wID = workerID
 	}

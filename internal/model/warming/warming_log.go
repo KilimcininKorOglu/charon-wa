@@ -45,7 +45,7 @@ func GetAllWarmingLogs(roomID, status string, limit int, userID int64, isAdmin b
 		FROM warming_logs
 		WHERE 1=1
 	`
-	var args []interface{}
+	var args []any
 	argIndex := 1
 
 	// RBAC: Filter by ownership for non-admin users

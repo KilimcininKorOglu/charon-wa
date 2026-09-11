@@ -121,7 +121,7 @@ func GetAllWarmingScriptLines(c echo.Context) error {
 		responses = append(responses, warmingModel.ToWarmingScriptLineResponse(line))
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, "Script lines retrieved successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Script lines retrieved successfully", map[string]any{
 		"total": len(responses),
 		"lines": responses,
 	})
@@ -224,7 +224,7 @@ func UpdateWarmingScriptLine(c echo.Context) error {
 		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to update script line", "UPDATE_FAILED", err.Error())
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, "Line updated successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Line updated successfully", map[string]any{
 		"id": lineID,
 	})
 }
@@ -271,7 +271,7 @@ func DeleteWarmingScriptLine(c echo.Context) error {
 		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to delete script line", "DELETE_FAILED", err.Error())
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, "Line deleted successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Line deleted successfully", map[string]any{
 		"id": lineID,
 	})
 }
@@ -347,7 +347,7 @@ func GenerateWarmingScriptLines(c echo.Context) error {
 		responses = append(responses, warmingModel.ToWarmingScriptLineResponse(line))
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, fmt.Sprintf("%d script lines generated successfully", len(responses)), map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, fmt.Sprintf("%d script lines generated successfully", len(responses)), map[string]any{
 		"created":  len(responses),
 		"category": req.Category,
 		"lines":    responses,
@@ -400,7 +400,7 @@ func ReorderWarmingScriptLines(c echo.Context) error {
 		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to reorder script lines", "REORDER_FAILED", err.Error())
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, "Script lines reordered successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Script lines reordered successfully", map[string]any{
 		"updated": len(req.Lines),
 	})
 }

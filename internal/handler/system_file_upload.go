@@ -25,7 +25,7 @@ const SystemDir = "./uploads/system"
 func UpdateSystemIdentityFull(c echo.Context) error {
 	userClaims, ok := c.Get("user_claims").(*service.Claims)
 	if !ok || userClaims.Role != "admin" {
-		return c.JSON(http.StatusForbidden, map[string]interface{}{
+		return c.JSON(http.StatusForbidden, map[string]any{
 			"success": false,
 			"message": "Admin access required",
 		})
@@ -34,7 +34,7 @@ func UpdateSystemIdentityFull(c echo.Context) error {
 	// 1. Get current identity from DB
 	identity, err := model.GetSystemIdentity()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return c.JSON(http.StatusInternalServerError, map[string]any{
 			"success": false,
 			"message": "Failed to fetch current settings",
 		})
@@ -71,7 +71,7 @@ func UpdateSystemIdentityFull(c echo.Context) error {
 			if err == http.ErrMissingFile {
 				continue // Skip if this specific file wasn't uploaded
 			}
-			return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			return c.JSON(http.StatusBadRequest, map[string]any{
 				"success": false,
 				"message": fmt.Sprintf("Error reading file %s", key),
 			})
@@ -140,7 +140,7 @@ func UpdateSystemIdentityFull(c echo.Context) error {
 
 		// Save new file
 		if err := os.WriteFile(filePath, compressedData, 0600); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+			return c.JSON(http.StatusInternalServerError, map[string]any{
 				"success": false,
 				"message": fmt.Sprintf("Failed to save file %s", key),
 			})
@@ -149,7 +149,7 @@ func UpdateSystemIdentityFull(c echo.Context) error {
 
 	// 4. Save everything back to database using existing model logic
 	if err := model.UpdateSystemIdentitySettings(identity); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return c.JSON(http.StatusInternalServerError, map[string]any{
 			"success": false,
 			"message": "Failed to save settings to database",
 		})
@@ -161,7 +161,7 @@ func UpdateSystemIdentityFull(c echo.Context) error {
 		Action:       "system.identity.update_full",
 		ResourceType: sql.NullString{String: "system", Valid: true},
 		ResourceID:   sql.NullString{String: "identity", Valid: true},
-		Details: map[string]interface{}{
+		Details: map[string]any{
 			"updated_by": userClaims.Username,
 			"timestamp":  helper.GetTimestamp(),
 		},
@@ -169,7 +169,7 @@ func UpdateSystemIdentityFull(c echo.Context) error {
 		UserAgent: sql.NullString{String: c.Request().UserAgent(), Valid: true},
 	})
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	return c.JSON(http.StatusOK, map[string]any{
 		"success": true,
 		"message": "System identity updated successfully",
 		"data":    identity,
@@ -181,13 +181,13 @@ func UpdateSystemIdentityFull(c echo.Context) error {
 func GetSystemIdentityHandler(c echo.Context) error {
 	identity, err := model.GetSystemIdentity()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return c.JSON(http.StatusInternalServerError, map[string]any{
 			"success": false,
 			"message": "Failed to get system identity",
 		})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	return c.JSON(http.StatusOK, map[string]any{
 		"success": true,
 		"data":    identity,
 	})

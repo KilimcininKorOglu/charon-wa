@@ -42,7 +42,7 @@ type UserResponse struct {
 	IsActive      bool      `json:"is_active"`
 	EmailVerified bool      `json:"email_verified"`
 	CreatedAt     time.Time `json:"created_at"`
-	LastLoginAt   time.Time `json:"last_login_at,omitempty"`
+	LastLoginAt   time.Time `json:"last_login_at"`
 }
 
 // CreateUserRequest is the request payload for creating a new user

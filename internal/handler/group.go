@@ -44,9 +44,9 @@ func GetGroups(c echo.Context) error {
 		return ErrorResponse(c, 500, "Failed to get groups", "GET_GROUPS_FAILED", err.Error())
 	}
 
-	groupList := make([]map[string]interface{}, 0)
+	groupList := make([]map[string]any, 0)
 	for _, groupInfo := range groups {
-		groupList = append(groupList, map[string]interface{}{
+		groupList = append(groupList, map[string]any{
 			"jid":          groupInfo.JID.String(),
 			"name":         groupInfo.Name,
 			"topic":        groupInfo.Topic,
@@ -56,7 +56,7 @@ func GetGroups(c echo.Context) error {
 		})
 	}
 
-	return SuccessResponse(c, 200, "Groups retrieved", map[string]interface{}{
+	return SuccessResponse(c, 200, "Groups retrieved", map[string]any{
 		"total":  len(groupList),
 		"groups": groupList,
 	})
@@ -118,7 +118,7 @@ func SendGroupMessage(c echo.Context) error {
 		return ErrorResponse(c, 500, "Failed to send message", "SEND_FAILED", err.Error())
 	}
 
-	return SuccessResponse(c, 200, "Message sent to group", map[string]interface{}{
+	return SuccessResponse(c, 200, "Message sent to group", map[string]any{
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"groupJid":  req.GroupJID,
@@ -217,7 +217,7 @@ func SendGroupMedia(c echo.Context) error {
 		return ErrorResponse(c, 500, "Failed to send media", "SEND_FAILED", err.Error())
 	}
 
-	return SuccessResponse(c, 200, "Media sent to group", map[string]interface{}{
+	return SuccessResponse(c, 200, "Media sent to group", map[string]any{
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"groupJid":  groupJid,
@@ -316,7 +316,7 @@ func SendGroupMediaURL(c echo.Context) error {
 		return ErrorResponse(c, 500, "Failed to send media", "SEND_FAILED", err.Error())
 	}
 
-	return SuccessResponse(c, 200, "Media sent to group", map[string]interface{}{
+	return SuccessResponse(c, 200, "Media sent to group", map[string]any{
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"groupJid":  req.GroupJID,
@@ -365,9 +365,9 @@ func GetGroupsByNumber(c echo.Context) error {
 		return ErrorResponse(c, 500, "Failed to get groups", "GET_GROUPS_FAILED", err.Error())
 	}
 
-	groupList := make([]map[string]interface{}, 0)
+	groupList := make([]map[string]any, 0)
 	for _, groupInfo := range groups {
-		groupList = append(groupList, map[string]interface{}{
+		groupList = append(groupList, map[string]any{
 			"jid":          groupInfo.JID.String(),
 			"name":         groupInfo.Name,
 			"topic":        groupInfo.Topic,
@@ -377,7 +377,7 @@ func GetGroupsByNumber(c echo.Context) error {
 		})
 	}
 
-	return SuccessResponse(c, 200, "Groups retrieved", map[string]interface{}{
+	return SuccessResponse(c, 200, "Groups retrieved", map[string]any{
 		"from":   phoneNumber,
 		"total":  len(groupList),
 		"groups": groupList,
@@ -459,7 +459,7 @@ func SendGroupMessageByNumber(c echo.Context) error {
 		return ErrorResponse(c, 500, "Failed to send message", "SEND_FAILED", err.Error())
 	}
 
-	return SuccessResponse(c, 200, "Message sent to group", map[string]interface{}{
+	return SuccessResponse(c, 200, "Message sent to group", map[string]any{
 		"from":      phoneNumber,
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
@@ -578,7 +578,7 @@ func SendGroupMediaByNumber(c echo.Context) error {
 		return ErrorResponse(c, 500, "Failed to send media", "SEND_FAILED", err.Error())
 	}
 
-	return SuccessResponse(c, 200, "Media sent to group", map[string]interface{}{
+	return SuccessResponse(c, 200, "Media sent to group", map[string]any{
 		"from":      phoneNumber,
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
@@ -696,7 +696,7 @@ func SendGroupMediaURLByNumber(c echo.Context) error {
 		return ErrorResponse(c, 500, "Failed to send media", "SEND_FAILED", err.Error())
 	}
 
-	return SuccessResponse(c, 200, "Media sent to group", map[string]interface{}{
+	return SuccessResponse(c, 200, "Media sent to group", map[string]any{
 		"from":      phoneNumber,
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),

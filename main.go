@@ -326,10 +326,10 @@ func main() {
 			c.Response().Header().Set("X-RateLimit-Limit", strconv.Itoa(limit))
 			c.Response().Header().Set("X-RateLimit-Remaining", "0")
 			c.Response().Header().Set("X-RateLimit-Reset", strconv.FormatInt(reset, 10))
-			return c.JSON(http.StatusTooManyRequests, map[string]interface{}{
+			return c.JSON(http.StatusTooManyRequests, map[string]any{
 				"success": false,
 				"message": "Rate limit exceeded. Please slow down.",
-				"error": map[string]interface{}{
+				"error": map[string]any{
 					"code":        "RATE_LIMITED",
 					"retry_after": windowSeconds,
 				},
@@ -423,7 +423,7 @@ func main() {
 		if !allHealthy {
 			status = 503
 		}
-		return c.JSON(status, map[string]interface{}{
+		return c.JSON(status, map[string]any{
 			"success":    allHealthy,
 			"message":    "WhatsApp API is running",
 			"version":    resolveVersion(),
@@ -445,7 +445,7 @@ func main() {
 			message = fmt.Sprintf("%v", he.Message)
 		}
 		// Custom response format
-		response := map[string]interface{}{
+		response := map[string]any{
 			"success": false,
 			"error":   message,
 		}

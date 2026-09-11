@@ -124,7 +124,7 @@ func CheckDuplicateWhitelistedNumber(whitelistedNumber string, excludeRoomID *uu
 	}
 
 	var query string
-	var args []interface{}
+	var args []any
 
 	if excludeRoomID != nil {
 		query = `
@@ -134,7 +134,7 @@ func CheckDuplicateWhitelistedNumber(whitelistedNumber string, excludeRoomID *uu
 			  AND status IN ('ACTIVE', 'PAUSED')
 			  AND id != $2
 		`
-		args = []interface{}{whitelistedNumber, excludeRoomID}
+		args = []any{whitelistedNumber, excludeRoomID}
 	} else {
 		query = `
 			SELECT COUNT(*) FROM warming_rooms
@@ -142,7 +142,7 @@ func CheckDuplicateWhitelistedNumber(whitelistedNumber string, excludeRoomID *uu
 			  AND whitelisted_number = $1
 			  AND status IN ('ACTIVE', 'PAUSED')
 		`
-		args = []interface{}{whitelistedNumber}
+		args = []any{whitelistedNumber}
 	}
 
 	var count int
@@ -258,7 +258,7 @@ func CreateWarmingRoom(req *CreateWarmingRoomRequest, userID int64) (*WarmingRoo
 // GetAllWarmingRooms retrieves all rooms with optional status filter
 func GetAllWarmingRooms(status string, userID int64, isAdmin bool) ([]WarmingRoom, error) {
 	var query string
-	var args []interface{}
+	var args []any
 	argIndex := 1
 
 	if status != "" {
@@ -557,7 +557,7 @@ func UpdateRoomStatus(id string, status string, nextRunAt *time.Time) error {
 	}
 
 	var query string
-	var args []interface{}
+	var args []any
 
 	if nextRunAt != nil {
 		query = `
@@ -565,14 +565,14 @@ func UpdateRoomStatus(id string, status string, nextRunAt *time.Time) error {
 			SET status = $1, next_run_at = $2, updated_at = NOW()
 			WHERE id = $3
 		`
-		args = []interface{}{status, nextRunAt, roomID}
+		args = []any{status, nextRunAt, roomID}
 	} else {
 		query = `
 			UPDATE warming_rooms
 			SET status = $1, next_run_at = NULL, updated_at = NOW()
 			WHERE id = $2
 		`
-		args = []interface{}{status, roomID}
+		args = []any{status, roomID}
 	}
 
 	result, err := database.AppDB.Exec(query, args...)

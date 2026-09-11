@@ -79,7 +79,7 @@ func SendMessage(c echo.Context) error {
 		return ErrorResponse(c, 500, "Failed to send message", "SEND_FAILED", err.Error())
 	}
 
-	return SuccessResponse(c, 200, "Message sent successfully", map[string]interface{}{
+	return SuccessResponse(c, 200, "Message sent successfully", map[string]any{
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"to":        req.To,
@@ -167,7 +167,7 @@ func SendMessageByNumber(c echo.Context) error {
 		return ErrorResponse(c, 500, "Failed to send message", "SEND_FAILED", err.Error())
 	}
 
-	return SuccessResponse(c, 200, "Message sent successfully", map[string]interface{}{
+	return SuccessResponse(c, 200, "Message sent successfully", map[string]any{
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"from":      phoneNumber, // sender number

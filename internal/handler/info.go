@@ -42,7 +42,7 @@ func GetDeviceInfo(c echo.Context) error {
 	fullJID := deviceJID.String()
 
 	// 7. SUCCESS RESPONSE
-	return SuccessResponse(c, 200, "Device info retrieved", map[string]interface{}{
+	return SuccessResponse(c, 200, "Device info retrieved", map[string]any{
 		"instanceId":  instanceID,
 		"jid":         fullJID,
 		"phoneNumber": phoneNumber,

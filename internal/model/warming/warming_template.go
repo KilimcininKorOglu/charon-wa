@@ -79,7 +79,7 @@ func CreateWarmingTemplate(req *CreateWarmingTemplateRequest, userID int64) (*Wa
 // GetAllWarmingTemplates retrieves all templates with optional category filter
 func GetAllWarmingTemplates(category string, userID int64, isAdmin bool) ([]WarmingTemplate, error) {
 	var query string
-	var args []interface{}
+	var args []any
 
 	if category != "" {
 		query = `

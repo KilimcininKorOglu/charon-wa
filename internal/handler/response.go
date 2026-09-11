@@ -8,10 +8,10 @@ import (
 
 // Standard response structure
 type APIResponse struct {
-	Success bool        `json:"success"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
-	Error   *ErrorInfo  `json:"error,omitempty"`
+	Success bool       `json:"success"`
+	Message string     `json:"message"`
+	Data    any        `json:"data,omitempty"`
+	Error   *ErrorInfo `json:"error,omitempty"`
 }
 
 type ErrorInfo struct {
@@ -21,7 +21,7 @@ type ErrorInfo struct {
 }
 
 // Success response helper
-func SuccessResponse(c echo.Context, statusCode int, message string, data interface{}) error {
+func SuccessResponse(c echo.Context, statusCode int, message string, data any) error {
 	return c.JSON(statusCode, APIResponse{
 		Success: true,
 		Message: message,

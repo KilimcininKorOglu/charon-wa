@@ -35,7 +35,7 @@ func CreateAPIKey(c echo.Context) error {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to create API key", "INTERNAL_ERROR", err.Error())
 	}
 
-	return SuccessResponse(c, http.StatusCreated, "API key created. Save this key — it won't be shown again.", map[string]interface{}{
+	return SuccessResponse(c, http.StatusCreated, "API key created. Save this key — it won't be shown again.", map[string]any{
 		"id":          key.ID,
 		"key":         rawKey,
 		"key_prefix":  key.KeyPrefix,

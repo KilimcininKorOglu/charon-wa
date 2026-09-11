@@ -77,7 +77,7 @@ func GetAllWarmingTemplates(c echo.Context) error {
 		responses = append(responses, warmingModel.ToWarmingTemplateResponse(template))
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, "Templates retrieved successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Templates retrieved successfully", map[string]any{
 		"total":     len(responses),
 		"templates": responses,
 	})
@@ -167,7 +167,7 @@ func UpdateWarmingTemplate(c echo.Context) error {
 		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to update template", "UPDATE_FAILED", err.Error())
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, "Template updated successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Template updated successfully", map[string]any{
 		"id": id,
 	})
 }
@@ -208,7 +208,7 @@ func DeleteWarmingTemplate(c echo.Context) error {
 		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to delete template", "DELETE_FAILED", err.Error())
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, "Template deleted successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Template deleted successfully", map[string]any{
 		"id": id,
 	})
 }

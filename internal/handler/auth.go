@@ -78,7 +78,7 @@ func Login(c echo.Context) error {
 		}
 
 		session.IsConnected = true
-		return SuccessResponse(c, 200, "Session reconnected successfully", map[string]interface{}{
+		return SuccessResponse(c, 200, "Session reconnected successfully", map[string]any{
 			"instanceId": instanceID,
 			"status":     "connected",
 			"jid":        session.Client.Store.ID.String(),
@@ -121,7 +121,7 @@ func Login(c echo.Context) error {
 		}
 	}
 
-	return SuccessResponse(c, 200, "Instance created, QR code required", map[string]interface{}{
+	return SuccessResponse(c, 200, "Instance created, QR code required", map[string]any{
 		"instanceId": instanceID,
 		"status":     "qr_required",
 		"nextStep":   "Call GET /qr/:instanceId to get QR code",
@@ -156,7 +156,7 @@ func GetQR(c echo.Context) error {
 	}
 
 	if session.IsConnected {
-		return SuccessResponse(c, 200, "Already connected", map[string]interface{}{
+		return SuccessResponse(c, 200, "Already connected", map[string]any{
 			"status": "already_connected",
 			"jid":    session.Client.Store.ID.String(),
 		})
@@ -190,7 +190,7 @@ func GetQR(c echo.Context) error {
 				errorEvt := ws.WsEvent{
 					Event:     ws.EventInstanceError,
 					Timestamp: time.Now().UTC(),
-					Data: map[string]interface{}{
+					Data: map[string]any{
 						"instance_id": instanceID,
 						"code":        "qr_channel_failed",
 						"error":       "Could not start QR session. Please try again.",
@@ -210,7 +210,7 @@ func GetQR(c echo.Context) error {
 				errorEvt := ws.WsEvent{
 					Event:     ws.EventInstanceError,
 					Timestamp: time.Now().UTC(),
-					Data: map[string]interface{}{
+					Data: map[string]any{
 						"instance_id": instanceID,
 						"code":        "connect_failed",
 						"error":       "Could not connect the instance. Please try again.",
@@ -233,7 +233,7 @@ func GetQR(c echo.Context) error {
 					cancelEvt := ws.WsEvent{
 						Event:     ws.EventQRTimeout,
 						Timestamp: time.Now().UTC(),
-						Data: map[string]interface{}{
+						Data: map[string]any{
 							"instance_id": instanceID,
 							"status":      "cancelled",
 							"reason":      ctx.Err().Error(),
@@ -287,7 +287,7 @@ func GetQR(c echo.Context) error {
 					successEvt := ws.WsEvent{
 						Event:     ws.EventQRSuccess,
 						Timestamp: time.Now().UTC(),
-						Data: map[string]interface{}{
+						Data: map[string]any{
 							"instance_id": instanceID,
 							"status":      "connected",
 						},
@@ -303,7 +303,7 @@ func GetQR(c echo.Context) error {
 					timeoutEvt := ws.WsEvent{
 						Event:     ws.EventQRTimeout,
 						Timestamp: time.Now().UTC(),
-						Data: map[string]interface{}{
+						Data: map[string]any{
 							"instance_id": instanceID,
 							"status":      "timeout",
 						},
@@ -319,7 +319,7 @@ func GetQR(c echo.Context) error {
 					errorEvt := ws.WsEvent{
 						Event:     ws.EventInstanceError,
 						Timestamp: time.Now().UTC(),
-						Data: map[string]interface{}{
+						Data: map[string]any{
 							"instance_id": instanceID,
 							"error":       evt.Event,
 						},
@@ -337,7 +337,7 @@ func GetQR(c echo.Context) error {
 			errorEvt := ws.WsEvent{
 				Event:     ws.EventInstanceError,
 				Timestamp: time.Now().UTC(),
-				Data: map[string]interface{}{
+				Data: map[string]any{
 					"instance_id": instanceID,
 					"error":       "QR channel closed unexpectedly",
 				},
@@ -347,7 +347,7 @@ func GetQR(c echo.Context) error {
 	}()
 
 	// Return response immediately without waiting for QR generation to complete
-	return SuccessResponse(c, 200, "QR generation started", map[string]interface{}{
+	return SuccessResponse(c, 200, "QR generation started", map[string]any{
 		"status":      "generating",
 		"message":     "QR codes will be sent via WebSocket. Listen to QR_GENERATED event.",
 		"instance_id": instanceID,
@@ -376,7 +376,7 @@ func CancelQR(c echo.Context) error {
 		cancelEvt := ws.WsEvent{
 			Event:     ws.EventQRCancelled,
 			Timestamp: time.Now().UTC(),
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"instance_id": instanceID,
 				"status":      "cancelled",
 				"message":     "User cancelled QR generation",
@@ -385,7 +385,7 @@ func CancelQR(c echo.Context) error {
 		service.Realtime.Publish(cancelEvt)
 	}
 
-	return SuccessResponse(c, 200, "QR generation cancelled successfully", map[string]interface{}{
+	return SuccessResponse(c, 200, "QR generation cancelled successfully", map[string]any{
 		"instance_id": instanceID,
 		"status":      "cancelled",
 	})
@@ -400,7 +400,7 @@ func GetStatus(c echo.Context) error {
 		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "")
 	}
 
-	return SuccessResponse(c, 200, "Status retrieved", map[string]interface{}{
+	return SuccessResponse(c, 200, "Status retrieved", map[string]any{
 		"instanceId":  instanceID,
 		"isConnected": session.IsConnected,
 		"jid":         session.JID,
@@ -482,10 +482,10 @@ func GetAllInstances(c echo.Context) error {
 		instances = append(instances, resp)
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
+	return c.JSON(http.StatusOK, map[string]any{
 		"success": true,
 		"message": "Instances retrieved",
-		"data": map[string]interface{}{
+		"data": map[string]any{
 			"total":     len(instances),
 			"instances": instances,
 		},
@@ -501,7 +501,7 @@ func Logout(c echo.Context) error {
 		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", err.Error())
 	}
 
-	return SuccessResponse(c, 200, "Logged out successfully", map[string]interface{}{
+	return SuccessResponse(c, 200, "Logged out successfully", map[string]any{
 		"instanceId": instanceID,
 	})
 }
@@ -538,7 +538,7 @@ func DeleteInstance(c echo.Context) error {
 		)
 	}
 
-	return SuccessResponse(c, 200, "Instance deleted successfully", map[string]interface{}{
+	return SuccessResponse(c, 200, "Instance deleted successfully", map[string]any{
 		"instanceId": instanceID,
 	})
 }
@@ -565,7 +565,7 @@ func UpdateInstanceFields(c echo.Context) error {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to update instance", "UPDATE_FAILED", err.Error())
 	}
 
-	return SuccessResponse(c, http.StatusOK, "Instance updated successfully", map[string]interface{}{
+	return SuccessResponse(c, http.StatusOK, "Instance updated successfully", map[string]any{
 		"instanceId": instanceID,
 	})
 }

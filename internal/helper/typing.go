@@ -19,21 +19,11 @@ func ApplyTypingDelay(client *whatsmeow.Client, recipient types.JID, messageLeng
 	typingSpeed := 0.15
 	calculatedDelay := baseDelay + int(float64(messageLength)*typingSpeed)
 
-	variationRange := int(float64(calculatedDelay) * 0.4)
-	if variationRange < 1 {
-		variationRange = 1
-	}
+	variationRange := max(int(float64(calculatedDelay)*0.4), 1)
 	// Every rand call in this file picks a typing delay. None produces a secret.
 	// #nosec G404
 	variation := rand.Intn(variationRange) - int(float64(calculatedDelay)*0.2)
-	finalDelay := calculatedDelay + variation
-
-	if finalDelay > 30 {
-		finalDelay = 30
-	}
-	if finalDelay < 3 {
-		finalDelay = 3
-	}
+	finalDelay := max(min(calculatedDelay+variation, 30), 3)
 
 	// Override with config values (read once at startup, not per-request)
 	if config.TypingDelayMin > 0 && config.TypingDelayMax >= config.TypingDelayMin {

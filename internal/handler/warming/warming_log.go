@@ -58,7 +58,7 @@ func GetAllWarmingLogs(c echo.Context) error {
 		responses = append(responses, warmingModel.ToWarmingLogResponse(log))
 	}
 
-	return handler.SuccessResponse(c, http.StatusOK, "Logs retrieved successfully", map[string]interface{}{
+	return handler.SuccessResponse(c, http.StatusOK, "Logs retrieved successfully", map[string]any{
 		"total": len(responses),
 		"logs":  responses,
 	})
