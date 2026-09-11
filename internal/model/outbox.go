@@ -171,32 +171,73 @@ func GetOutboxMessage(ctx context.Context, id int64, clientID int) (*OutboxMessa
 	return &msg, nil
 }
 
-// ListOutboxMessages returns paginated outbox messages with filtering
-func ListOutboxMessages(ctx context.Context, filter OutboxFilter) ([]OutboxMessage, int, error) {
+// outboxFilterClause builds the WHERE clause for a list filter. It returns the
+// clause, its positional arguments, and the next free placeholder index.
+func outboxFilterClause(filter OutboxFilter) (string, []any, int) {
 	where := []string{}
 	args := []any{}
 	idx := 1
 
-	if filter.ClientID > 0 {
-		where = append(where, fmt.Sprintf("client_id = $%d", idx))
-		args = append(args, filter.ClientID)
-		idx++
-	}
-	if filter.Application != "" {
-		where = append(where, fmt.Sprintf("application = $%d", idx))
-		args = append(args, filter.Application)
-		idx++
-	}
-	if filter.Status != nil {
-		where = append(where, fmt.Sprintf("status = $%d", idx))
-		args = append(args, *filter.Status)
+	addCondition := func(column string, value any) {
+		where = append(where, fmt.Sprintf("%s = $%d", column, idx))
+		args = append(args, value)
 		idx++
 	}
 
-	whereClause := ""
-	if len(where) > 0 {
-		whereClause = "WHERE " + strings.Join(where, " AND ")
+	if filter.ClientID > 0 {
+		addCondition("client_id", filter.ClientID)
 	}
+	if filter.Application != "" {
+		addCondition("application", filter.Application)
+	}
+	if filter.Status != nil {
+		addCondition("status", *filter.Status)
+	}
+
+	if len(where) == 0 {
+		return "", args, idx
+	}
+	return "WHERE " + strings.Join(where, " AND "), args, idx
+}
+
+// outboxPageBounds clamps the requested page window to the supported range.
+func outboxPageBounds(filter OutboxFilter) (int, int) {
+	limit := filter.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	page := max(filter.Page, 1)
+	return limit, (page - 1) * limit
+}
+
+// scanOutboxMessage reads one row of the list query into an OutboxMessage.
+func scanOutboxMessage(rows *sql.Rows) (OutboxMessage, error) {
+	var msg OutboxMessage
+	var fromNum, app, tableID, file, msgErr sql.NullString
+	var sendDT sql.NullTime
+
+	if err := rows.Scan(
+		&msg.ID, &msg.Type, &fromNum, &msg.ClientID, &msg.Destination, &msg.Messages,
+		&msg.Status, &msg.Priority, &app, &sendDT, &msg.InsertDateTime, &tableID, &file, &msg.ErrorCount, &msgErr,
+	); err != nil {
+		return OutboxMessage{}, err
+	}
+
+	msg.StatusText = statusText(msg.Status)
+	msg.FromNumber = fromNum.String
+	msg.Application = app.String
+	msg.TableID = tableID.String
+	msg.File = file.String
+	msg.MsgError = msgErr.String
+	if sendDT.Valid {
+		msg.SendingDateTime = &sendDT.Time
+	}
+	return msg, nil
+}
+
+// ListOutboxMessages returns paginated outbox messages with filtering
+func ListOutboxMessages(ctx context.Context, filter OutboxFilter) ([]OutboxMessage, int, error) {
+	whereClause, args, idx := outboxFilterClause(filter)
 
 	// Count
 	var total int
@@ -205,14 +246,7 @@ func ListOutboxMessages(ctx context.Context, filter OutboxFilter) ([]OutboxMessa
 		return nil, 0, err
 	}
 
-	// Page
-	limit := filter.Limit
-	if limit <= 0 || limit > 100 {
-		limit = 50
-	}
-	page := max(filter.Page, 1)
-	offset := (page - 1) * limit
-
+	limit, offset := outboxPageBounds(filter)
 	dataQuery := fmt.Sprintf(
 		`SELECT id_outbox, COALESCE(type, 1), from_number, COALESCE(client_id, 0), destination, messages,
 		        status, priority, application, sendingDateTime, insertDateTime, table_id, file, error_count, msg_error
@@ -228,35 +262,9 @@ func ListOutboxMessages(ctx context.Context, filter OutboxFilter) ([]OutboxMessa
 
 	var messages []OutboxMessage
 	for rows.Next() {
-		var msg OutboxMessage
-		var fromNum, app, tableID, file, msgErr sql.NullString
-		var sendDT sql.NullTime
-
-		if err := rows.Scan(
-			&msg.ID, &msg.Type, &fromNum, &msg.ClientID, &msg.Destination, &msg.Messages,
-			&msg.Status, &msg.Priority, &app, &sendDT, &msg.InsertDateTime, &tableID, &file, &msg.ErrorCount, &msgErr,
-		); err != nil {
+		msg, err := scanOutboxMessage(rows)
+		if err != nil {
 			return nil, 0, err
-		}
-
-		msg.StatusText = statusText(msg.Status)
-		if fromNum.Valid {
-			msg.FromNumber = fromNum.String
-		}
-		if app.Valid {
-			msg.Application = app.String
-		}
-		if sendDT.Valid {
-			msg.SendingDateTime = &sendDT.Time
-		}
-		if tableID.Valid {
-			msg.TableID = tableID.String
-		}
-		if file.Valid {
-			msg.File = file.String
-		}
-		if msgErr.Valid {
-			msg.MsgError = msgErr.String
 		}
 		messages = append(messages, msg)
 	}
