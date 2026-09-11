@@ -51,152 +51,164 @@ func clampMaxTokens(v int) int {
 	return v
 }
 
-// CreateWarmingRoomService creates new room with validation
-func CreateWarmingRoomService(req *warmingModel.CreateWarmingRoomRequest, userID int64, isAdmin bool) (*warmingModel.WarmingRoom, error) {
-	// Validate name
+// validateRoomType rejects any room type the executor cannot run.
+func validateRoomType(roomType string) error {
+	if roomType != "BOT_VS_BOT" && roomType != "HUMAN_VS_BOT" {
+		return errors.New("invalid room_type: must be 'BOT_VS_BOT' or 'HUMAN_VS_BOT'")
+	}
+	return nil
+}
+
+// validateRoomInstance checks that an instance exists, is online, and that the
+// caller may use it. role names the instance in the error text ("sender"/"receiver").
+func validateRoomInstance(instanceID, role string, userID int64, isAdmin bool) error {
+	instance, err := model.GetInstanceByInstanceID(instanceID)
+	if err != nil {
+		return fmt.Errorf("%s instance not found: %s", role, instanceID)
+	}
+	if instance.Status != "online" {
+		return fmt.Errorf("%s instance '%s' is not online (status: %s)", role, instanceID, instance.Status)
+	}
+	if isAdmin {
+		return nil
+	}
+	if _, err := model.CheckUserInstancePermission(userID, instanceID); err != nil {
+		return fmt.Errorf("no permission to use %s instance: %s", role, instanceID)
+	}
+	return nil
+}
+
+// normalizeReplyDelays applies the HUMAN_VS_BOT reply delay defaults in place
+// and rejects an inverted range.
+func normalizeReplyDelays(minDelay, maxDelay *int) error {
+	if *minDelay <= 0 {
+		*minDelay = 10
+	}
+	if *maxDelay <= 0 {
+		*maxDelay = 60
+	}
+	if *maxDelay < *minDelay {
+		return errors.New("reply_delay_max must be >= reply_delay_min")
+	}
+	return nil
+}
+
+// normalizeIntervals applies the message interval defaults in place and rejects
+// an inverted range.
+func normalizeIntervals(minSeconds, maxSeconds *int) error {
+	if *minSeconds <= 0 {
+		*minSeconds = 5
+	}
+	if *maxSeconds <= 0 {
+		*maxSeconds = 15
+	}
+	if *maxSeconds < *minSeconds {
+		return ErrRoomIntervalInvalid
+	}
+	return nil
+}
+
+// verifyScriptAccess confirms the script exists and, for non-admins, that the
+// caller owns it. A missing script and a foreign script report the same error
+// so ownership cannot be probed.
+func verifyScriptAccess(scriptID int, userID int64, isAdmin bool) error {
+	if isAdmin {
+		if _, err := warmingModel.GetWarmingScriptByID(scriptID); err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				return errors.New("script not found")
+			}
+			return fmt.Errorf("failed to verify script: %w", err)
+		}
+		return nil
+	}
+
+	isOwner, err := warmingModel.CheckScriptOwnership(scriptID, userID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return errors.New("script not found")
+		}
+		return fmt.Errorf("failed to verify script ownership: %w", err)
+	}
+	if !isOwner {
+		return errors.New("script not found")
+	}
+	return nil
+}
+
+// validateBotVsBotRoom checks the two instances a BOT_VS_BOT room drives.
+func validateBotVsBotRoom(req *warmingModel.CreateWarmingRoomRequest, userID int64, isAdmin bool) error {
+	if strings.TrimSpace(req.SenderInstanceID) == "" {
+		return ErrRoomSenderRequired
+	}
+	if strings.TrimSpace(req.ReceiverInstanceID) == "" {
+		return ErrRoomReceiverRequired
+	}
+	if req.SenderInstanceID == req.ReceiverInstanceID {
+		return ErrRoomSameInstance
+	}
+	if err := validateRoomInstance(req.SenderInstanceID, "sender", userID, isAdmin); err != nil {
+		return err
+	}
+	return validateRoomInstance(req.ReceiverInstanceID, "receiver", userID, isAdmin)
+}
+
+// validateHumanVsBotRoom checks the bot side of a HUMAN_VS_BOT room and applies
+// its reply delay defaults. The human is the receiver, so the receiver instance
+// is cleared.
+func validateHumanVsBotRoom(req *warmingModel.CreateWarmingRoomRequest, userID int64, isAdmin bool) error {
+	if strings.TrimSpace(req.SenderInstanceID) == "" {
+		return ErrRoomSenderRequired
+	}
+	if strings.TrimSpace(req.WhitelistedNumber) == "" {
+		return errors.New("whitelisted_number is required for HUMAN_VS_BOT")
+	}
+	if err := validateRoomInstance(req.SenderInstanceID, "sender", userID, isAdmin); err != nil {
+		return err
+	}
+	if err := normalizeReplyDelays(&req.ReplyDelayMin, &req.ReplyDelayMax); err != nil {
+		return err
+	}
+
+	req.ReceiverInstanceID = ""
+	return nil
+}
+
+// validateCreateRoomRequest runs every check the create path needs and applies
+// the request defaults in place.
+func validateCreateRoomRequest(req *warmingModel.CreateWarmingRoomRequest, userID int64, isAdmin bool) error {
 	if strings.TrimSpace(req.Name) == "" {
-		return nil, ErrRoomNameRequired
+		return ErrRoomNameRequired
 	}
 
 	// Set default room_type if not provided
 	if req.RoomType == "" {
 		req.RoomType = "BOT_VS_BOT"
 	}
-
-	// Validate room_type
-	if req.RoomType != "BOT_VS_BOT" && req.RoomType != "HUMAN_VS_BOT" {
-		return nil, errors.New("invalid room_type: must be 'BOT_VS_BOT' or 'HUMAN_VS_BOT'")
+	if err := validateRoomType(req.RoomType); err != nil {
+		return err
 	}
 
-	// BOT_VS_BOT specific validation
 	if req.RoomType == "BOT_VS_BOT" {
-		// Validate sender
-		if strings.TrimSpace(req.SenderInstanceID) == "" {
-			return nil, ErrRoomSenderRequired
+		if err := validateBotVsBotRoom(req, userID, isAdmin); err != nil {
+			return err
 		}
-
-		// Validate receiver
-		if strings.TrimSpace(req.ReceiverInstanceID) == "" {
-			return nil, ErrRoomReceiverRequired
-		}
-
-		// Validate not same instance
-		if req.SenderInstanceID == req.ReceiverInstanceID {
-			return nil, ErrRoomSameInstance
-		}
-
-		// Validate sender instance exists, online, and available
-		senderInstance, err := model.GetInstanceByInstanceID(req.SenderInstanceID)
-		if err != nil {
-			return nil, fmt.Errorf("sender instance not found: %s", req.SenderInstanceID)
-		}
-		if senderInstance.Status != "online" {
-			return nil, fmt.Errorf("sender instance '%s' is not online (status: %s)", req.SenderInstanceID, senderInstance.Status)
-		}
-
-		// Verify user has permission to use sender instance
-		if !isAdmin {
-			if _, err := model.CheckUserInstancePermission(userID, req.SenderInstanceID); err != nil {
-				return nil, fmt.Errorf("no permission to use sender instance: %s", req.SenderInstanceID)
-			}
-		}
-
-		// Validate receiver instance exists, online, and available
-		receiverInstance, err := model.GetInstanceByInstanceID(req.ReceiverInstanceID)
-		if err != nil {
-			return nil, fmt.Errorf("receiver instance not found: %s", req.ReceiverInstanceID)
-		}
-		if receiverInstance.Status != "online" {
-			return nil, fmt.Errorf("receiver instance '%s' is not online (status: %s)", req.ReceiverInstanceID, receiverInstance.Status)
-		}
-
-		// Verify user has permission to use receiver instance
-		if !isAdmin {
-			if _, err := model.CheckUserInstancePermission(userID, req.ReceiverInstanceID); err != nil {
-				return nil, fmt.Errorf("no permission to use receiver instance: %s", req.ReceiverInstanceID)
-			}
-		}
-
+	} else if err := validateHumanVsBotRoom(req, userID, isAdmin); err != nil {
+		return err
 	}
 
-	// HUMAN_VS_BOT specific validation
-	if req.RoomType == "HUMAN_VS_BOT" {
-		// Validate sender (the bot that will auto-reply)
-		if strings.TrimSpace(req.SenderInstanceID) == "" {
-			return nil, ErrRoomSenderRequired
-		}
-
-		// Validate whitelisted number
-		if strings.TrimSpace(req.WhitelistedNumber) == "" {
-			return nil, errors.New("whitelisted_number is required for HUMAN_VS_BOT")
-		}
-
-		// Validate sender instance exists, online, and available
-		senderInstance, err := model.GetInstanceByInstanceID(req.SenderInstanceID)
-		if err != nil {
-			return nil, fmt.Errorf("sender instance not found: %s", req.SenderInstanceID)
-		}
-		if senderInstance.Status != "online" {
-			return nil, fmt.Errorf("sender instance '%s' is not online (status: %s)", req.SenderInstanceID, senderInstance.Status)
-		}
-
-		// Verify user has permission to use sender instance
-		if !isAdmin {
-			if _, err := model.CheckUserInstancePermission(userID, req.SenderInstanceID); err != nil {
-				return nil, fmt.Errorf("no permission to use sender instance: %s", req.SenderInstanceID)
-			}
-		}
-
-		// Set default reply delays if not provided
-		if req.ReplyDelayMin <= 0 {
-			req.ReplyDelayMin = 10
-		}
-		if req.ReplyDelayMax <= 0 {
-			req.ReplyDelayMax = 60
-		}
-		if req.ReplyDelayMax < req.ReplyDelayMin {
-			return nil, errors.New("reply_delay_max must be >= reply_delay_min")
-		}
-
-		// Receiver not needed for HUMAN_VS_BOT (human is the receiver)
-		req.ReceiverInstanceID = ""
-	}
-
-	// Validate script
 	if req.ScriptID <= 0 {
-		return nil, ErrRoomScriptRequired
+		return ErrRoomScriptRequired
 	}
+	if err := normalizeIntervals(&req.IntervalMinSeconds, &req.IntervalMaxSeconds); err != nil {
+		return err
+	}
+	return verifyScriptAccess(int(req.ScriptID), userID, isAdmin)
+}
 
-	// Validate interval
-	if req.IntervalMinSeconds <= 0 {
-		req.IntervalMinSeconds = 5 // Default
-	}
-	if req.IntervalMaxSeconds <= 0 {
-		req.IntervalMaxSeconds = 15 // Default
-	}
-	if req.IntervalMaxSeconds < req.IntervalMinSeconds {
-		return nil, ErrRoomIntervalInvalid
-	}
-
-	// Check if script exists and belongs to this user (or is a shared/admin script)
-	if !isAdmin {
-		isOwner, err := warmingModel.CheckScriptOwnership(int(req.ScriptID), userID)
-		if err != nil {
-			if strings.Contains(err.Error(), "not found") {
-				return nil, errors.New("script not found")
-			}
-			return nil, fmt.Errorf("failed to verify script ownership: %w", err)
-		}
-		if !isOwner {
-			return nil, errors.New("script not found")
-		}
-	} else {
-		if _, err := warmingModel.GetWarmingScriptByID(int(req.ScriptID)); err != nil {
-			if strings.Contains(err.Error(), "not found") {
-				return nil, errors.New("script not found")
-			}
-			return nil, fmt.Errorf("failed to verify script: %w", err)
-		}
+// CreateWarmingRoomService creates new room with validation
+func CreateWarmingRoomService(req *warmingModel.CreateWarmingRoomRequest, userID int64, isAdmin bool) (*warmingModel.WarmingRoom, error) {
+	if err := validateCreateRoomRequest(req, userID, isAdmin); err != nil {
+		return nil, err
 	}
 
 	// Clamp AI parameters to safe bounds before persisting.
@@ -207,7 +219,6 @@ func CreateWarmingRoomService(req *warmingModel.CreateWarmingRoomRequest, userID
 		}
 	}
 
-	// Create in database
 	room, err := warmingModel.CreateWarmingRoom(req, userID)
 	if err != nil {
 		return nil, fmt.Errorf("service: %w", err)
@@ -256,96 +267,65 @@ func GetWarmingRoomByIDService(id string) (*warmingModel.WarmingRoom, error) {
 	return room, nil
 }
 
-// UpdateWarmingRoomService updates existing room with validation
-func UpdateWarmingRoomService(id string, req *warmingModel.UpdateWarmingRoomRequest, userID int64, isAdmin bool) error {
+// resolveUpdateRoomType returns the room type the update must run under.
+// room_type is immutable after creation, so an explicit mismatch is rejected
+// and an empty value inherits the stored type.
+func resolveUpdateRoomType(id, requested string) (string, error) {
+	existingRoom, err := warmingModel.GetWarmingRoomByID(id)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return "", ErrRoomNotFound
+		}
+		return "", fmt.Errorf("failed to get existing room: %w", err)
+	}
+
+	if requested != "" && requested != existingRoom.RoomType {
+		return "", errors.New("room_type cannot be changed after creation. Please create a new room instead")
+	}
+	return existingRoom.RoomType, nil
+}
+
+// validateUpdateRoomRequest runs every check the update path needs and applies
+// the request defaults in place.
+func validateUpdateRoomRequest(id string, req *warmingModel.UpdateWarmingRoomRequest, userID int64, isAdmin bool) error {
 	if strings.TrimSpace(id) == "" {
 		return errors.New("invalid room ID")
 	}
-
-	// Validate name
 	if strings.TrimSpace(req.Name) == "" {
 		return ErrRoomNameRequired
 	}
 
-	// Get existing room to check room_type
-	existingRoom, err := warmingModel.GetWarmingRoomByID(id)
+	roomType, err := resolveUpdateRoomType(id, req.RoomType)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return ErrRoomNotFound
-		}
-		return fmt.Errorf("failed to get existing room: %w", err)
+		return err
+	}
+	req.RoomType = roomType
+	if err := validateRoomType(req.RoomType); err != nil {
+		return err
 	}
 
-	// Prevent room_type changes (immutable after creation)
-	if req.RoomType != "" && req.RoomType != existingRoom.RoomType {
-		return errors.New("room_type cannot be changed after creation. Please create a new room instead")
-	}
-
-	// Use existing room_type if not provided in request
-	if req.RoomType == "" {
-		req.RoomType = existingRoom.RoomType
-	}
-
-	// Validate room_type
-	if req.RoomType != "BOT_VS_BOT" && req.RoomType != "HUMAN_VS_BOT" {
-		return errors.New("invalid room_type: must be 'BOT_VS_BOT' or 'HUMAN_VS_BOT'")
-	}
-
-	// HUMAN_VS_BOT specific validation
 	if req.RoomType == "HUMAN_VS_BOT" {
-		// Validate whitelisted number
 		if strings.TrimSpace(req.WhitelistedNumber) == "" {
 			return errors.New("whitelisted_number is required for HUMAN_VS_BOT")
 		}
-
-		// Validate reply delays
-		if req.ReplyDelayMin <= 0 {
-			req.ReplyDelayMin = 10
-		}
-		if req.ReplyDelayMax <= 0 {
-			req.ReplyDelayMax = 60
-		}
-		if req.ReplyDelayMax < req.ReplyDelayMin {
-			return errors.New("reply_delay_max must be >= reply_delay_min")
+		if err := normalizeReplyDelays(&req.ReplyDelayMin, &req.ReplyDelayMax); err != nil {
+			return err
 		}
 	}
 
-	// Validate script
 	if req.ScriptID <= 0 {
 		return ErrRoomScriptRequired
 	}
+	if err := verifyScriptAccess(int(req.ScriptID), userID, isAdmin); err != nil {
+		return err
+	}
+	return normalizeIntervals(&req.IntervalMinSeconds, &req.IntervalMaxSeconds)
+}
 
-	// Check if script exists and belongs to this user
-	if !isAdmin {
-		isOwner, err := warmingModel.CheckScriptOwnership(int(req.ScriptID), userID)
-		if err != nil {
-			if strings.Contains(err.Error(), "not found") {
-				return errors.New("script not found")
-			}
-			return fmt.Errorf("failed to verify script: %w", err)
-		}
-		if !isOwner {
-			return errors.New("script not found")
-		}
-	} else {
-		_, err = warmingModel.GetWarmingScriptByID(int(req.ScriptID))
-		if err != nil {
-			if strings.Contains(err.Error(), "not found") {
-				return errors.New("script not found")
-			}
-			return fmt.Errorf("failed to verify script: %w", err)
-		}
-	}
-
-	// Validate interval
-	if req.IntervalMinSeconds <= 0 {
-		req.IntervalMinSeconds = 5
-	}
-	if req.IntervalMaxSeconds <= 0 {
-		req.IntervalMaxSeconds = 15
-	}
-	if req.IntervalMaxSeconds < req.IntervalMinSeconds {
-		return ErrRoomIntervalInvalid
+// UpdateWarmingRoomService updates existing room with validation
+func UpdateWarmingRoomService(id string, req *warmingModel.UpdateWarmingRoomRequest, userID int64, isAdmin bool) error {
+	if err := validateUpdateRoomRequest(id, req, userID, isAdmin); err != nil {
+		return err
 	}
 
 	// Clamp AI parameters to safe bounds before persisting.
@@ -358,9 +338,7 @@ func UpdateWarmingRoomService(id string, req *warmingModel.UpdateWarmingRoomRequ
 		req.AIMaxTokens = &clamped
 	}
 
-	// Update in database
-	err = warmingModel.UpdateWarmingRoom(id, req)
-	if err != nil {
+	if err := warmingModel.UpdateWarmingRoom(id, req); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			return ErrRoomNotFound
 		}
