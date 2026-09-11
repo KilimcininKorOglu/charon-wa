@@ -106,21 +106,161 @@ func (w *WorkerInstance) Stop() {
 	w.wg.Wait()
 }
 
-func (w *WorkerInstance) runCycle() {
-	// 1. Build Application Filter
-	// Supports: "App1" (Single), "App1, App2, App3" (Multi), "*" or "" (Wildcard)
-	var applications []string
-	if w.config.Application != "*" && w.config.Application != "" {
-		for a := range strings.SplitSeq(w.config.Application, ",") {
-			if trimmed := strings.TrimSpace(a); trimmed != "" {
-				applications = append(applications, trimmed)
-			}
-		}
+// applicationFilter turns the worker's Application setting into the list of
+// application names to claim for. Supports "App1" (single), "App1, App2"
+// (multi), and "*" or "" (wildcard, which claims everything).
+func (w *WorkerInstance) applicationFilter() []string {
+	if w.config.Application == "*" || w.config.Application == "" {
+		return nil
 	}
 
-	// 2. Claim a pending message scoped to this worker's owner (tenant isolation).
-	msg, err := ClaimPendingOutbox(w.ctx, applications, w.config.UserID)
+	var applications []string
+	for a := range strings.SplitSeq(w.config.Application, ",") {
+		if trimmed := strings.TrimSpace(a); trimmed != "" {
+			applications = append(applications, trimmed)
+		}
+	}
+	return applications
+}
 
+// failOutbox marks a message failed, logs the reason, and records a worker event.
+// It always runs on a background context so a cancelled worker still persists
+// the outcome.
+func (w *WorkerInstance) failOutbox(msgID int64, level, errMsg string) {
+	w.logf("%s", helper.SanitizeLogValue(errMsg))
+	LogWorkerEvent(w.config.ID, w.config.WorkerName, level, errMsg)
+	if err := UpdateOutboxFailed(context.Background(), msgID, errMsg); err != nil {
+		w.logf("CRITICAL: Failed to update status to failed for ID %d: %v", msgID, err)
+	}
+}
+
+// normalizeGroupDestination appends the group suffix when it is missing.
+func (w *WorkerInstance) normalizeGroupDestination(destination string) string {
+	if strings.Contains(destination, "@") {
+		return destination
+	}
+	normalized := destination + "@g.us"
+	w.logf("Normalized Group ID: %s", helper.SanitizeLogValue(normalized))
+	return normalized
+}
+
+// normalizePhoneDestination strips every non-digit, rewrites a leading 0 to the
+// 62 country code, and reports whether the result is usable.
+func normalizePhoneDestination(destination string) (string, bool) {
+	cleaned := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, destination)
+
+	if strings.HasPrefix(cleaned, "0") {
+		cleaned = "62" + cleaned[1:]
+	}
+	if !strings.HasPrefix(cleaned, "62") || len(cleaned) < 10 {
+		return "", false
+	}
+	return cleaned, true
+}
+
+// resolveDestination normalizes the message destination for the worker's
+// message type. It marks the message failed and returns false when the
+// destination is unusable.
+func (w *WorkerInstance) resolveDestination(msg *OutboxMessage) (string, bool) {
+	if w.config.MessageType == "group" {
+		return w.normalizeGroupDestination(msg.Destination), true
+	}
+
+	cleaned, ok := normalizePhoneDestination(msg.Destination)
+	if !ok {
+		w.logf("Invalid phone number format: %s", helper.SanitizeLogValue(msg.Destination))
+		if err := UpdateOutboxFailed(w.ctx, msg.ID, "Invalid phone number format"); err != nil {
+			w.logf("CRITICAL: Failed to update status to failed for ID %d: %v", msg.ID, err)
+		}
+		return "", false
+	}
+	return cleaned, true
+}
+
+// pickInstance returns the next instance in the circle by round-robin. It marks
+// the message failed and returns false when no instance is available.
+func (w *WorkerInstance) pickInstance(msgID int64) (InstanceInfo, bool) {
+	instances, err := w.client.GetInstances(w.ctx, w.config.Circle)
+	if err != nil {
+		w.failOutbox(msgID, "ERROR", fmt.Sprintf("Error fetching instances: %v", err))
+		return InstanceInfo{}, false
+	}
+	if len(instances) == 0 {
+		w.failOutbox(msgID, "WARN", fmt.Sprintf("No used instances found in circle: %s", w.config.Circle))
+		return InstanceInfo{}, false
+	}
+
+	selected := instances[w.counter%len(instances)]
+	w.counter++
+	return selected, true
+}
+
+// dispatch sends one message through the API, choosing the media or text
+// endpoint and the group or direct variant from the worker configuration.
+func (w *WorkerInstance) dispatch(instanceID, destination string, msg *OutboxMessage) (bool, string, error) {
+	isGroup := w.config.MessageType == "group"
+
+	if w.config.AllowMedia && msg.File.Valid && msg.File.String != "" {
+		// Media Message (File with Caption from Messages)
+		if isGroup {
+			return w.client.SendGroupMediaURL(w.ctx, instanceID, destination, msg.File.String, msg.Messages)
+		}
+		return w.client.SendMediaURL(w.ctx, instanceID, destination, msg.File.String, msg.Messages)
+	}
+
+	if isGroup {
+		return w.client.SendGroupMessage(w.ctx, instanceID, destination, msg.Messages)
+	}
+	return w.client.SendMessage(w.ctx, instanceID, destination, msg.Messages)
+}
+
+// recordSuccess persists the delivery, fires the webhook, and paces the next
+// send so a burst does not look like spam.
+func (w *WorkerInstance) recordSuccess(msg *OutboxMessage, instance InstanceInfo) {
+	w.logf("Success! Sent ID %d via instance %s (%s)", msg.ID, instance.InstanceID, instance.PhoneNumber)
+
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := UpdateOutboxSuccess(dbCtx, msg.ID, instance.PhoneNumber); err != nil {
+		w.logf("CRITICAL: Failed to update status to success for ID %d: %v", msg.ID, err)
+	}
+	dbCancel()
+
+	go w.sendWebhook(msg, 1, "success", instance.PhoneNumber, "")
+
+	// Optional: delay after success to prevent mass-ban
+	// Send pacing jitter, not a secret.
+	// #nosec G404
+	time.Sleep(time.Duration(rand.Intn(2)+1) * time.Second)
+}
+
+// recordAPIFailure persists an API-reported failure and fires the webhook.
+func (w *WorkerInstance) recordAPIFailure(msg *OutboxMessage, apiMsg string) {
+	w.logf("Failed sending ID %d: %s", msg.ID, helper.SanitizeLogValue(apiMsg))
+
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := UpdateOutboxFailed(dbCtx, msg.ID, apiMsg); err != nil {
+		w.logf("CRITICAL: Failed to update status to failed for ID %d: %v", msg.ID, err)
+	}
+	dbCancel()
+
+	// Log significant failures (like 401 or specific API errors)
+	lowered := strings.ToLower(apiMsg)
+	if strings.Contains(lowered, "unauthorized") || strings.Contains(lowered, "forbidden") {
+		LogWorkerEvent(w.config.ID, w.config.WorkerName, "ERROR", fmt.Sprintf("API Authorization Error: %s", apiMsg))
+	}
+
+	go w.sendWebhook(msg, 2, "failed", "", apiMsg)
+}
+
+// runCycle claims one pending outbox message and delivers it. Every exit path
+// leaves the message in a terminal state, never claimed-and-forgotten.
+func (w *WorkerInstance) runCycle() {
+	msg, err := ClaimPendingOutbox(w.ctx, w.applicationFilter(), w.config.UserID)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			w.logf("Error claiming outbox: %v", err)
@@ -130,125 +270,27 @@ func (w *WorkerInstance) runCycle() {
 
 	w.logf("Processing message ID: %d to %s", msg.ID, helper.SanitizeLogValue(msg.Destination))
 
-	// 2. Validate and Normalize Destination
-	destination := msg.Destination
-	if w.config.MessageType == "group" {
-		// Group ID normalization: append @g.us if missing
-		if !strings.Contains(destination, "@") {
-			destination = destination + "@g.us"
-			w.logf("Normalized Group ID: %s", helper.SanitizeLogValue(destination))
-		}
-	} else {
-		// Direct Message normalization
-		cleaned := strings.Map(func(r rune) rune {
-			if r >= '0' && r <= '9' {
-				return r
-			}
-			return -1
-		}, destination)
-
-		if strings.HasPrefix(cleaned, "0") {
-			cleaned = "62" + cleaned[1:]
-		}
-
-		if !strings.HasPrefix(cleaned, "62") || len(cleaned) < 10 {
-			w.logf("Invalid phone number format: %s", helper.SanitizeLogValue(destination))
-			if err := UpdateOutboxFailed(w.ctx, msg.ID, "Invalid phone number format"); err != nil {
-				w.logf("CRITICAL: Failed to update status to failed for ID %d: %v", msg.ID, err)
-			}
-			return
-		}
-		destination = cleaned
-	}
-
-	// 3. Get Instances for this Circle
-	instances, err := w.client.GetInstances(w.ctx, w.config.Circle)
-	if err != nil {
-		errMsg := fmt.Sprintf("Error fetching instances: %v", err)
-		w.logf("%s", helper.SanitizeLogValue(errMsg))
-		LogWorkerEvent(w.config.ID, w.config.WorkerName, "ERROR", errMsg)
-		if err := UpdateOutboxFailed(context.Background(), msg.ID, errMsg); err != nil {
-			w.logf("CRITICAL: Failed to update status to failed for ID %d: %v", msg.ID, err)
-		}
+	destination, ok := w.resolveDestination(msg)
+	if !ok {
 		return
 	}
 
-	if len(instances) == 0 {
-		errMsg := fmt.Sprintf("No used instances found in circle: %s", w.config.Circle)
-		w.logf("%s", helper.SanitizeLogValue(errMsg))
-		LogWorkerEvent(w.config.ID, w.config.WorkerName, "WARN", errMsg)
-		if err := UpdateOutboxFailed(context.Background(), msg.ID, errMsg); err != nil {
-			w.logf("CRITICAL: Failed to update status to failed for ID %d: %v", msg.ID, err)
-		}
+	selectedInstance, ok := w.pickInstance(msg.ID)
+	if !ok {
 		return
 	}
 
-	// 4. Select Instance (Round-Robin)
-	selectedInstance := instances[w.counter%len(instances)]
-	w.counter++
-
-	// 5. Send Message
-	var success bool
-	var apiMsg string
-
-	if w.config.AllowMedia && msg.File.Valid && msg.File.String != "" {
-		// Media Message (File with Caption from Messages)
-		if w.config.MessageType == "group" {
-			success, apiMsg, err = w.client.SendGroupMediaURL(w.ctx, selectedInstance.InstanceID, destination, msg.File.String, msg.Messages)
-		} else {
-			success, apiMsg, err = w.client.SendMediaURL(w.ctx, selectedInstance.InstanceID, destination, msg.File.String, msg.Messages)
-		}
-	} else {
-		// Text Message
-		if w.config.MessageType == "group" {
-			success, apiMsg, err = w.client.SendGroupMessage(w.ctx, selectedInstance.InstanceID, destination, msg.Messages)
-		} else {
-			success, apiMsg, err = w.client.SendMessage(w.ctx, selectedInstance.InstanceID, destination, msg.Messages)
-		}
-	}
-
+	success, apiMsg, err := w.dispatch(selectedInstance.InstanceID, destination, msg)
 	if err != nil {
-		errMsg := fmt.Sprintf("Error calling API (Instance %s): %v", selectedInstance.InstanceID, err)
-		w.logf("%s", helper.SanitizeLogValue(errMsg))
-		LogWorkerEvent(w.config.ID, w.config.WorkerName, "ERROR", errMsg)
-		if err := UpdateOutboxFailed(context.Background(), msg.ID, errMsg); err != nil {
-			w.logf("CRITICAL: Failed to update status to failed for ID %d: %v", msg.ID, err)
-		}
+		w.failOutbox(msg.ID, "ERROR", fmt.Sprintf("Error calling API (Instance %s): %v", selectedInstance.InstanceID, err))
 		return
 	}
 
 	if success {
-		w.logf("Success! Sent ID %d via instance %s (%s)", msg.ID, selectedInstance.InstanceID, selectedInstance.PhoneNumber)
-		dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if err := UpdateOutboxSuccess(dbCtx, msg.ID, selectedInstance.PhoneNumber); err != nil {
-			w.logf("CRITICAL: Failed to update status to success for ID %d: %v", msg.ID, err)
-		}
-
-		dbCancel()
-
-		// Trigger Webhook
-		go w.sendWebhook(msg, 1, "success", selectedInstance.PhoneNumber, "")
-
-		// Optional: delay after success to prevent mass-ban
-		// Send pacing jitter, not a secret.
-		// #nosec G404
-		time.Sleep(time.Duration(rand.Intn(2)+1) * time.Second)
-	} else {
-		w.logf("Failed sending ID %d: %s", msg.ID, helper.SanitizeLogValue(apiMsg))
-		dbCtx2, dbCancel2 := context.WithTimeout(context.Background(), 5*time.Second)
-		if err := UpdateOutboxFailed(dbCtx2, msg.ID, apiMsg); err != nil {
-			w.logf("CRITICAL: Failed to update status to failed for ID %d: %v", msg.ID, err)
-		}
-		dbCancel2()
-
-		// Log significant failures (like 401 or specific API errors)
-		if strings.Contains(strings.ToLower(apiMsg), "unauthorized") || strings.Contains(strings.ToLower(apiMsg), "forbidden") {
-			LogWorkerEvent(w.config.ID, w.config.WorkerName, "ERROR", fmt.Sprintf("API Authorization Error: %s", apiMsg))
-		}
-
-		// Trigger Webhook
-		go w.sendWebhook(msg, 2, "failed", "", apiMsg)
+		w.recordSuccess(msg, selectedInstance)
+		return
 	}
+	w.recordAPIFailure(msg, apiMsg)
 }
 
 func (w *WorkerInstance) sendWebhook(msg *OutboxMessage, status int, statusText string, fromNumber string, errorMsg string) {

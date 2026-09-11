@@ -82,31 +82,7 @@ func (m *WorkerManager) reloadConfigs() {
 
 	for _, config := range configs {
 		activeConfigIDs[config.ID] = true
-
-		if existingWorker, exists := m.workers[config.ID]; exists {
-			// Update existing worker if config changed (e.g., interval)
-			if existingWorker.config.IntervalSeconds != config.IntervalSeconds ||
-				existingWorker.config.IntervalMaxSeconds != config.IntervalMaxSeconds ||
-				existingWorker.config.Circle != config.Circle ||
-				existingWorker.config.Application != config.Application ||
-				existingWorker.config.MessageType != config.MessageType {
-
-				log.Printf("Config changed for worker ID %d (%s). Restarting...", config.ID, config.WorkerName)
-				existingWorker.Stop()
-
-				newWorker := NewWorkerInstance(config, m.client)
-				m.workers[config.ID] = newWorker
-				go newWorker.Start()
-			}
-		} else {
-			// Start new worker
-			log.Printf("Starting new worker ID %d: %s (Application: %s, Circle: %s, Interval: %ds)",
-				config.ID, config.WorkerName, config.Application, config.Circle, config.IntervalSeconds)
-
-			newWorker := NewWorkerInstance(config, m.client)
-			m.workers[config.ID] = newWorker
-			go newWorker.Start()
-		}
+		m.applyConfig(config)
 	}
 
 	// Stop workers whose configs are no longer in DB or are disabled
@@ -117,6 +93,37 @@ func (m *WorkerManager) reloadConfigs() {
 			delete(m.workers, id)
 		}
 	}
+}
+
+// needsRestart reports whether a running worker's settings no longer match the
+// config just read from the database.
+func needsRestart(running, latest WorkerConfig) bool {
+	return running.IntervalSeconds != latest.IntervalSeconds ||
+		running.IntervalMaxSeconds != latest.IntervalMaxSeconds ||
+		running.Circle != latest.Circle ||
+		running.Application != latest.Application ||
+		running.MessageType != latest.MessageType
+}
+
+// applyConfig starts a worker for a new config, or restarts the running one
+// when its settings changed. The caller must hold m.mu.
+func (m *WorkerManager) applyConfig(config WorkerConfig) {
+	existingWorker, exists := m.workers[config.ID]
+
+	switch {
+	case !exists:
+		log.Printf("Starting new worker ID %d: %s (Application: %s, Circle: %s, Interval: %ds)",
+			config.ID, config.WorkerName, config.Application, config.Circle, config.IntervalSeconds)
+	case needsRestart(existingWorker.config, config):
+		log.Printf("Config changed for worker ID %d (%s). Restarting...", config.ID, config.WorkerName)
+		existingWorker.Stop()
+	default:
+		return
+	}
+
+	newWorker := NewWorkerInstance(config, m.client)
+	m.workers[config.ID] = newWorker
+	go newWorker.Start()
 }
 
 func (m *WorkerManager) Stop() {
