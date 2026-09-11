@@ -27,6 +27,24 @@ func execInTx(db *sql.DB, stmt string) error {
 	return nil
 }
 
+// mustExec applies a required DDL block in a transaction. A failure here means
+// the process cannot serve requests, so it aborts startup.
+func mustExec(db *sql.DB, stmt, what string) {
+	if err := execInTx(db, stmt); err != nil {
+		log.Fatalf("%s: %v", what, err)
+	}
+}
+
+// tryExec applies a best-effort migration. These are safe to skip on a database
+// that already has the change, so a failure only warns.
+func tryExec(db *sql.DB, stmt, what, okMsg string) {
+	if _, err := db.Exec(stmt); err != nil {
+		log.Printf("⚠️ Warning: %s: %v", what, err)
+		return
+	}
+	log.Printf("✅ %s", okMsg)
+}
+
 func InitCustomSchema() {
 	db := database.AppDB
 
@@ -58,9 +76,7 @@ func InitCustomSchema() {
         CREATE INDEX IF NOT EXISTS idx_instances_phone_number ON instances(phone_number);
         CREATE INDEX IF NOT EXISTS idx_instances_status ON instances(status);
     `
-	if err := execInTx(db, baseSchema); err != nil {
-		log.Fatalf("failed to init base schema: %v", err)
-	}
+	mustExec(db, baseSchema, "failed to init base schema")
 
 	alterSchema := `
         ALTER TABLE instances
@@ -77,9 +93,7 @@ func InitCustomSchema() {
         CREATE INDEX IF NOT EXISTS idx_instances_circle ON instances(circle);
         CREATE INDEX IF NOT EXISTS idx_instances_used ON instances(used);
     `
-	if err := execInTx(db, alterSchema); err != nil {
-		log.Fatalf("failed to alter schema: %v", err)
-	}
+	mustExec(db, alterSchema, "failed to alter schema")
 
 	// WhatsApp Warming System Schema
 	warmingSchema := `
@@ -228,9 +242,7 @@ func InitCustomSchema() {
         -- Composite index for monitoring query: WHERE room_id = ? ORDER BY executed_at DESC
         CREATE INDEX IF NOT EXISTS idx_logs_room_executed ON warming_logs(room_id, executed_at DESC);
     `
-	if err := execInTx(db, warmingSchema); err != nil {
-		log.Fatalf("failed to init warming schema: %v", err)
-	}
+	mustExec(db, warmingSchema, "failed to init warming schema")
 
 	// Add send_real_message column if not exists (migration for existing tables)
 	alterWarmingSchema := `
@@ -256,9 +268,7 @@ func InitCustomSchema() {
 		CREATE INDEX IF NOT EXISTS idx_rooms_type ON warming_rooms(room_type);
 		CREATE INDEX IF NOT EXISTS idx_rooms_whitelist ON warming_rooms(whitelisted_number);
 	`
-	if err := execInTx(db, alterWarmingSchema); err != nil {
-		log.Fatalf("failed to alter warming schema: %v", err)
-	}
+	mustExec(db, alterWarmingSchema, "failed to alter warming schema")
 
 	// Warming Templates (Dynamic Templates)
 	templatesSchema := `
@@ -276,9 +286,7 @@ func InitCustomSchema() {
 		COMMENT ON COLUMN warming_templates.category IS 'Template category: casual, business, customer_service';
 		COMMENT ON COLUMN warming_templates.structure IS 'JSON array of dialog lines with message options';
 	`
-	if err := execInTx(db, templatesSchema); err != nil {
-		log.Fatalf("failed to create warming_templates table: %v", err)
-	}
+	mustExec(db, templatesSchema, "failed to create warming_templates table")
 
 	// Auto-seed initial templates if table is empty
 	var count int
@@ -290,7 +298,7 @@ func InitCustomSchema() {
 	}
 
 	// Add AI configuration fields to warming_rooms (if not exists)
-	_, err := db.Exec(`
+	tryExec(db, `
 		ALTER TABLE warming_rooms 
 		ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN DEFAULT FALSE,
 		ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(20) DEFAULT 'gemini',
@@ -299,23 +307,13 @@ func InitCustomSchema() {
 		ADD COLUMN IF NOT EXISTS ai_temperature DECIMAL(3,2) DEFAULT 0.7,
 		ADD COLUMN IF NOT EXISTS ai_max_tokens INT DEFAULT 150,
 		ADD COLUMN IF NOT EXISTS fallback_to_script BOOLEAN DEFAULT TRUE
-	`)
-	if err != nil {
-		log.Printf("⚠️ Warning: Could not add AI fields to warming_rooms: %v", err)
-	} else {
-		log.Println("✅ AI configuration fields added to warming_rooms")
-	}
+	`, "Could not add AI fields to warming_rooms", "AI configuration fields added to warming_rooms")
 
 	// Add sender_type field to warming_logs for AI context tracking
-	_, err = db.Exec(`
+	tryExec(db, `
 		ALTER TABLE warming_logs 
 		ADD COLUMN IF NOT EXISTS sender_type VARCHAR(10) DEFAULT 'bot'
-	`)
-	if err != nil {
-		log.Printf("⚠️ Warning: Could not add sender_type to warming_logs: %v", err)
-	} else {
-		log.Println("✅ sender_type field added to warming_logs (for AI context)")
-	}
+	`, "Could not add sender_type to warming_logs", "sender_type field added to warming_logs (for AI context)")
 
 	// =====================================================
 	// USER MANAGEMENT SYSTEM SCHEMA (MUST BE BEFORE RBAC)
@@ -402,9 +400,7 @@ func InitCustomSchema() {
 		COMMENT ON COLUMN audit_logs.action IS 'Action performed: user.login, user.register, instance.create, message.send, etc.';
 		COMMENT ON COLUMN audit_logs.details IS 'Additional context as JSON';
 	`
-	if err := execInTx(db, userManagementSchema); err != nil {
-		log.Fatalf("failed to init user management schema: %v", err)
-	}
+	mustExec(db, userManagementSchema, "failed to init user management schema")
 
 	// Add created_by column to instances table (for user-instance relationship)
 	alterInstancesSchema := `
@@ -415,11 +411,7 @@ func InitCustomSchema() {
 
 		COMMENT ON COLUMN instances.created_by IS 'User ID who created this instance';
 	`
-	if _, err := db.Exec(alterInstancesSchema); err != nil {
-		log.Printf("⚠️ Warning: Could not add created_by to instances: %v", err)
-	} else {
-		log.Println("✅ created_by field added to instances table")
-	}
+	tryExec(db, alterInstancesSchema, "Could not add created_by to instances", "created_by field added to instances table")
 
 	// =====================================================
 	// SYSTEM SETTINGS TABLE
@@ -436,11 +428,7 @@ func InitCustomSchema() {
 		
 		COMMENT ON TABLE system_settings IS 'Global system settings and configurations';
 	`
-	if _, err := db.Exec(systemSettingsSchema); err != nil {
-		log.Printf("⚠️ Warning: Could not create system_settings table: %v", err)
-	} else {
-		log.Println("✅ System settings table created successfully")
-	}
+	tryExec(db, systemSettingsSchema, "Could not create system_settings table", "System settings table created successfully")
 
 	log.Println("✅ User management schema created successfully")
 
@@ -452,11 +440,7 @@ func InitCustomSchema() {
 		DROP TABLE IF EXISTS token_blacklist CASCADE;
 		DROP TABLE IF EXISTS ws_tickets CASCADE;
 	`
-	if _, err := db.Exec(dropLegacyAuthTables); err != nil {
-		log.Printf("⚠️ Warning: Could not drop legacy auth tables: %v", err)
-	} else {
-		log.Println("✅ Legacy JWT tables cleanup completed")
-	}
+	tryExec(db, dropLegacyAuthTables, "Could not drop legacy auth tables", "Legacy JWT tables cleanup completed")
 
 	// =====================================================
 	// AUTH SESSIONS TABLE (cookie-based session auth)
@@ -480,14 +464,10 @@ func InitCustomSchema() {
 		CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 		CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
 	`
-	if _, err := db.Exec(authSessionsSchema); err != nil {
-		log.Printf("⚠️ Warning: Could not create sessions table: %v", err)
-	} else {
-		log.Println("✅ Auth sessions table created successfully")
-	}
+	tryExec(db, authSessionsSchema, "Could not create sessions table", "Auth sessions table created successfully")
 
 	// Add created_by columns to warming tables for RBAC (NOW users table exists)
-	_, err = db.Exec(`
+	tryExec(db, `
 		-- Add created_by to warming_scripts
 		ALTER TABLE warming_scripts 
 		ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
@@ -515,38 +495,23 @@ func InitCustomSchema() {
 		
 		CREATE INDEX IF NOT EXISTS idx_warming_logs_created_by ON warming_logs(created_by);
 		COMMENT ON COLUMN warming_logs.created_by IS 'User ID who owns the room that generated this log';
-	`)
-	if err != nil {
-		log.Printf("⚠️ Warning: Could not add created_by to warming tables: %v", err)
-	} else {
-		log.Println("✅ created_by field added to warming tables for RBAC")
-	}
+	`, "Could not add created_by to warming tables", "created_by field added to warming tables for RBAC")
 
 	// Add unique constraint for whitelisted_number in ACTIVE HUMAN_VS_BOT rooms
-	_, err = db.Exec(`
+	tryExec(db, `
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_human_room 
 		ON warming_rooms (whitelisted_number) 
 		WHERE status = 'ACTIVE' AND room_type = 'HUMAN_VS_BOT' AND whitelisted_number IS NOT NULL
-	`)
-	if err != nil {
-		log.Printf("⚠️ Warning: Could not create unique index for whitelisted_number: %v", err)
-	} else {
-		log.Println("✅ Unique constraint added: One whitelisted number per active HUMAN_VS_BOT room")
-	}
+	`, "Could not create unique index for whitelisted_number", "Unique constraint added: One whitelisted number per active HUMAN_VS_BOT room")
 
 	// Add failed login tracking columns to users table
-	_, err = db.Exec(`
+	tryExec(db, `
 		ALTER TABLE users
 		ADD COLUMN IF NOT EXISTS failed_login_count INTEGER NOT NULL DEFAULT 0;
 
 		ALTER TABLE users
 		ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP WITH TIME ZONE;
-	`)
-	if err != nil {
-		log.Printf("⚠️ Warning: Could not add login lockout columns to users: %v", err)
-	}
-
-	log.Println("✅ User management schema created successfully")
+	`, "Could not add login lockout columns to users", "User management schema created successfully")
 
 	// =====================================================
 	// WORKER BLAST OUTBOX SCHEMA
@@ -575,11 +540,7 @@ func InitCustomSchema() {
 
 		COMMENT ON TABLE outbox_worker_config IS 'Database-driven worker configuration for dynamic blast outbox processing';
 	`
-	if _, err := db.Exec(workerConfigSchema); err != nil {
-		log.Printf("⚠️ Warning: Could not create outbox_worker_config table: %v", err)
-	} else {
-		log.Println("✅ Worker blast outbox configuration table ensured")
-	}
+	tryExec(db, workerConfigSchema, "Could not create outbox_worker_config table", "Worker blast outbox configuration table ensured")
 
 	// 3. Worker System Logs Table
 	workerSystemLogsSchema := `
@@ -592,11 +553,7 @@ func InitCustomSchema() {
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 		);
 	`
-	if _, err := db.Exec(workerSystemLogsSchema); err != nil {
-		log.Printf("⚠️ Warning: Could not create worker_system_logs table structure: %v", err)
-	} else {
-		log.Println("✅ Worker system logs table ensured")
-	}
+	tryExec(db, workerSystemLogsSchema, "Could not create worker_system_logs table structure", "Worker system logs table ensured")
 
 	log.Println("✅ Worker blast outbox configuration schema finalized")
 
@@ -658,11 +615,7 @@ func InitCustomSchema() {
 		ALTER TABLE outbox_worker_config 
 		ALTER COLUMN application TYPE TEXT;
 	`
-	if _, err := db.Exec(expandApplicationColumn); err != nil {
-		log.Printf("⚠️ Warning: Could not expand application column: %v", err)
-	} else {
-		log.Println("✅ Application column expanded to TEXT for multi-application support")
-	}
+	tryExec(db, expandApplicationColumn, "Could not expand application column", "Application column expanded to TEXT for multi-application support")
 
 	// =====================================================
 	// OUTBOX QUEUE SCHEMA (For Message Blasting)
@@ -692,11 +645,7 @@ func InitCustomSchema() {
 
 		COMMENT ON TABLE outbox IS 'Queue table for outgoing WhatsApp messages';
 	`
-	if _, err := db.Exec(outboxTableSchema); err != nil {
-		log.Printf("⚠️ Warning: Could not create outbox table: %v", err)
-	} else {
-		log.Println("✅ Outbox queue table ensured")
-	}
+	tryExec(db, outboxTableSchema, "Could not create outbox table", "Outbox queue table ensured")
 
 	// Ensure table_id exists in outbox (for older installations)
 	addOutboxColumnLogic := `
@@ -734,11 +683,7 @@ func InitCustomSchema() {
 		CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
 		CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
 	`
-	if _, err := db.Exec(apiKeysSchema); err != nil {
-		log.Printf("⚠️ Warning: Could not create api_keys table: %v", err)
-	} else {
-		log.Println("✅ API keys table ensured")
-	}
+	tryExec(db, apiKeysSchema, "Could not create api_keys table", "API keys table ensured")
 }
 
 // seedInitialTemplates populates warming_templates with initial conversation templates
