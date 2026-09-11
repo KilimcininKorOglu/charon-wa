@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"charon/internal/helper"
+	"charon/internal/model"
 	"charon/internal/service"
 
 	"github.com/labstack/echo/v4"
@@ -119,11 +120,10 @@ func GetContactDetail(c echo.Context) error {
 		return ErrorResponse(c, 404, "Contact not found", "CONTACT_NOT_FOUND", err.Error())
 	}
 
-	// Build contact detail
 	contactDetail := map[string]any{
 		"jid":            jid.String(),
 		"phoneNumber":    jid.User,
-		"name":           contact.FullName,
+		"name":           contactDisplayName(contact, jid.User),
 		"businessName":   contact.BusinessName,
 		"pushName":       contact.PushName,
 		"profilePicture": "",
@@ -133,18 +133,6 @@ func GetContactDetail(c echo.Context) error {
 		"verifiedName":   nil,
 	}
 
-	// Set default name if empty
-	if contactDetail["name"] == "" {
-		if contact.BusinessName != "" {
-			contactDetail["name"] = contact.BusinessName
-		} else if contact.PushName != "" {
-			contactDetail["name"] = contact.PushName
-		} else {
-			contactDetail["name"] = jid.User
-		}
-	}
-
-	// Fetch profile picture
 	pic, err := session.Client.GetProfilePictureInfo(context.Background(), jid, &whatsmeow.GetProfilePictureParams{
 		Preview: false,
 	})
@@ -152,25 +140,29 @@ func GetContactDetail(c echo.Context) error {
 		contactDetail["profilePicture"] = pic.URL
 	}
 
-	// Fetch user info (about status) - only for non-groups
+	// About status and verified-business info exist only for non-groups.
 	if jid.Server != "g.us" {
-		userInfo, err := session.Client.GetUserInfo(context.Background(), []types.JID{jid})
-		if err == nil && len(userInfo) > 0 {
-			info := userInfo[jid]
-
-			// About/Status
-			if info.Status != "" {
-				contactDetail["about"] = info.Status
-			}
-
-			// Verified business info
-			if info.VerifiedName != nil && info.VerifiedName.Details.GetVerifiedName() != "" {
-				contactDetail["verifiedName"] = info.VerifiedName.Details.GetVerifiedName()
-			}
-		}
+		addContactUserInfo(session, jid, contactDetail)
 	}
 
 	return SuccessResponse(c, 200, "Contact details retrieved successfully", contactDetail)
+}
+
+// addContactUserInfo fills the about status and verified business name into the
+// detail map. A lookup failure leaves the defaults in place.
+func addContactUserInfo(session *model.Session, jid types.JID, contactDetail map[string]any) {
+	userInfo, err := session.Client.GetUserInfo(context.Background(), []types.JID{jid})
+	if err != nil || len(userInfo) == 0 {
+		return
+	}
+
+	info := userInfo[jid]
+	if info.Status != "" {
+		contactDetail["about"] = info.Status
+	}
+	if info.VerifiedName != nil && info.VerifiedName.Details.GetVerifiedName() != "" {
+		contactDetail["verifiedName"] = info.VerifiedName.Details.GetVerifiedName()
+	}
 }
 
 // GET /contacts/:instanceId/:jid/mutual-groups
@@ -191,43 +183,15 @@ func GetMutualGroups(c echo.Context) error {
 
 	// Get contact name for better error message
 	contact, _ := session.Client.Store.Contacts.GetContact(context.Background(), jid)
-	contactName := contact.FullName
-	if contactName == "" {
-		if contact.BusinessName != "" {
-			contactName = contact.BusinessName
-		} else if contact.PushName != "" {
-			contactName = contact.PushName
-		} else {
-			contactName = jid.User
-		}
+	contactName := contactDisplayName(contact, jid.User)
+
+	release, errResp := claimMutualGroupsSlot(c, instanceID, jid, contactName)
+	if errResp != nil {
+		return errResp
 	}
+	defer release()
 
-	// Check if mutual groups is already being processed for this instance
-	mutualGroupsProcessingLock.Lock()
-	if processingInfo, exists := mutualGroupsProcessing[instanceID]; exists {
-		mutualGroupsProcessingLock.Unlock()
-		return ErrorResponse(c, 409, "Mutual groups check already in progress", "ALREADY_PROCESSING",
-			fmt.Sprintf("Currently checking mutual groups for: %s (%s). Please wait for it to complete.",
-				processingInfo["name"], processingInfo["jid"]))
-	}
-	// Mark as processing with contact info
-	mutualGroupsProcessing[instanceID] = map[string]string{
-		"jid":  jid.String(),
-		"name": contactName,
-	}
-	mutualGroupsProcessingLock.Unlock()
-
-	// Ensure we unlock when done (defer)
-	defer func() {
-		mutualGroupsProcessingLock.Lock()
-		delete(mutualGroupsProcessing, instanceID)
-		mutualGroupsProcessingLock.Unlock()
-		log.Printf("🔓 [Mutual Groups] Released lock for instance: %s", instanceID)
-	}()
-
-	log.Printf("🔒 [Mutual Groups] Acquired lock for instance: %s (checking: %s)", instanceID, contactName)
-
-	// Skip if it's a group
+	// A group JID has no mutual groups of its own.
 	if jid.Server == "g.us" {
 		return SuccessResponse(c, 200, "Mutual groups retrieved successfully", map[string]any{
 			"jid":          jid.String(),
@@ -235,58 +199,168 @@ func GetMutualGroups(c echo.Context) error {
 		})
 	}
 
-	// Fetch mutual groups
 	groups, err := session.Client.GetJoinedGroups(context.Background())
 	if err != nil {
 		return ErrorResponse(c, 500, "Failed to get joined groups", "FETCH_FAILED", err.Error())
 	}
 
-	mutualGroups := []string{}
-	phoneNumber := jid.User // Store phone number for comparison
-
-	log.Printf("🔍 [Mutual Groups] Starting search for %s in %d groups", phoneNumber, len(groups))
-
-	for i, group := range groups {
-		// Add delay to avoid rate limiting (skip delay for first request)
-		if i > 0 {
-			time.Sleep(1 * time.Second) // 1 second delay between requests
-		}
-
-		// Get group info to check if contact is a member
-		groupInfo, err := session.Client.GetGroupInfo(context.Background(), group.JID)
-		if err == nil {
-			log.Printf("📋 [%d/%d] Checking group: %s (%d participants)", i+1, len(groups), groupInfo.Name, len(groupInfo.Participants))
-
-			for _, participant := range groupInfo.Participants {
-				participantPhone := participant.JID.User
-
-				// If participant is LID, resolve to phone number
-				if participant.JID.Server == "lid" {
-					phoneJID, err := session.Client.Store.LIDs.GetPNForLID(context.Background(), participant.JID)
-					if err == nil && phoneJID.User != "" {
-						participantPhone = phoneJID.User
-					}
-				}
-
-				// Compare phone numbers
-				if participantPhone == phoneNumber {
-					mutualGroups = append(mutualGroups, groupInfo.Name)
-					log.Printf("✅ [%d/%d] Found match in: %s", i+1, len(groups), groupInfo.Name)
-					break
-				}
-			}
-		} else {
-			log.Printf("⚠️ [%d/%d] Error getting group info: %v", i+1, len(groups), err)
-		}
-	}
-
-	log.Printf("🎉 [Mutual Groups] Search complete! Found %d mutual groups", len(mutualGroups))
+	mutualGroups := collectMutualGroups(session, groups, jid.User)
 
 	return SuccessResponse(c, 200, "Mutual groups retrieved successfully", map[string]any{
 		"jid":          jid.String(),
 		"mutualGroups": mutualGroups,
 		"total":        len(mutualGroups),
 	})
+}
+
+// claimMutualGroupsSlot reserves the single mutual-groups scan slot for an
+// instance. The scan walks every joined group with a one-second pause, so only
+// one may run at a time. The returned function releases the slot; the second
+// result is a written ErrorResponse when the slot is already taken.
+func claimMutualGroupsSlot(c echo.Context, instanceID string, jid types.JID, contactName string) (func(), error) {
+	mutualGroupsProcessingLock.Lock()
+	if processingInfo, exists := mutualGroupsProcessing[instanceID]; exists {
+		mutualGroupsProcessingLock.Unlock()
+		return nil, ErrorResponse(c, 409, "Mutual groups check already in progress", "ALREADY_PROCESSING",
+			fmt.Sprintf("Currently checking mutual groups for: %s (%s). Please wait for it to complete.",
+				processingInfo["name"], processingInfo["jid"]))
+	}
+	mutualGroupsProcessing[instanceID] = map[string]string{
+		"jid":  jid.String(),
+		"name": contactName,
+	}
+	mutualGroupsProcessingLock.Unlock()
+
+	log.Printf("🔒 [Mutual Groups] Acquired lock for instance: %s (checking: %s)", instanceID, contactName)
+
+	return func() {
+		mutualGroupsProcessingLock.Lock()
+		delete(mutualGroupsProcessing, instanceID)
+		mutualGroupsProcessingLock.Unlock()
+		log.Printf("🔓 [Mutual Groups] Released lock for instance: %s", instanceID)
+	}, nil
+}
+
+// groupHasParticipant reports whether phoneNumber is a member of the group,
+// resolving linked-device (@lid) participants to their phone number first.
+func groupHasParticipant(session *model.Session, groupInfo *types.GroupInfo, phoneNumber string) bool {
+	for _, participant := range groupInfo.Participants {
+		participantPhone := participant.JID.User
+
+		if participant.JID.Server == "lid" {
+			phoneJID, err := session.Client.Store.LIDs.GetPNForLID(context.Background(), participant.JID)
+			if err == nil && phoneJID.User != "" {
+				participantPhone = phoneJID.User
+			}
+		}
+
+		if participantPhone == phoneNumber {
+			return true
+		}
+	}
+	return false
+}
+
+// collectMutualGroups returns the names of the joined groups that phoneNumber is
+// also in. Requests are paced one second apart to stay under WhatsApp's rate limit.
+func collectMutualGroups(session *model.Session, groups []*types.GroupInfo, phoneNumber string) []string {
+	mutualGroups := []string{}
+	log.Printf("🔍 [Mutual Groups] Starting search for %s in %d groups", phoneNumber, len(groups))
+
+	for i, group := range groups {
+		if i > 0 {
+			time.Sleep(1 * time.Second)
+		}
+
+		groupInfo, err := session.Client.GetGroupInfo(context.Background(), group.JID)
+		if err != nil {
+			log.Printf("⚠️ [%d/%d] Error getting group info: %v", i+1, len(groups), err)
+			continue
+		}
+
+		log.Printf("📋 [%d/%d] Checking group: %s (%d participants)", i+1, len(groups), groupInfo.Name, len(groupInfo.Participants))
+		if groupHasParticipant(session, groupInfo, phoneNumber) {
+			mutualGroups = append(mutualGroups, groupInfo.Name)
+			log.Printf("✅ [%d/%d] Found match in: %s", i+1, len(groups), groupInfo.Name)
+		}
+	}
+
+	log.Printf("🎉 [Mutual Groups] Search complete! Found %d mutual groups", len(mutualGroups))
+	return mutualGroups
+}
+
+// contactDisplayName returns the contact's best available name, falling back to
+// the business name, then the push name, then the bare phone number.
+func contactDisplayName(contact types.ContactInfo, fallback string) string {
+	if contact.FullName != "" {
+		return contact.FullName
+	}
+	if contact.BusinessName != "" {
+		return contact.BusinessName
+	}
+	if contact.PushName != "" {
+		return contact.PushName
+	}
+	return fallback
+}
+
+// queryPositiveInt reads a positive integer query param, or returns defaultVal.
+func queryPositiveInt(c echo.Context, name string, defaultVal int) int {
+	value, err := strconv.Atoi(c.QueryParam(name))
+	if err != nil || value <= 0 {
+		return defaultVal
+	}
+	return value
+}
+
+// buildContactMap deduplicates the store's contacts by phone number, dropping
+// linked-device (@lid) entries and preferring the entry with a real name.
+func buildContactMap(contacts map[types.JID]types.ContactInfo) map[string]ContactInfo {
+	contactMap := make(map[string]ContactInfo, len(contacts))
+
+	for jid, contact := range contacts {
+		// Skip all LID contacts (linked devices)
+		if jid.Server == "lid" {
+			continue
+		}
+
+		contactInfo := ContactInfo{
+			JID:         jid.String(),
+			PhoneNumber: jid.User,
+			Name:        contactDisplayName(contact, jid.User),
+			IsGroup:     jid.Server == "g.us",
+		}
+
+		// Later entries only win when they carry a real name rather than the
+		// phone number repeated back.
+		_, exists := contactMap[contactInfo.PhoneNumber]
+		if !exists || contactInfo.Name != contactInfo.PhoneNumber {
+			contactMap[contactInfo.PhoneNumber] = contactInfo
+		}
+	}
+
+	return contactMap
+}
+
+// matchesContactSearch reports whether a contact matches the lowercased query
+// on its name, JID or phone number. An empty query matches everything.
+func matchesContactSearch(contactInfo ContactInfo, searchQuery string) bool {
+	if searchQuery == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(contactInfo.Name), searchQuery) ||
+		strings.Contains(strings.ToLower(contactInfo.JID), searchQuery) ||
+		strings.Contains(strings.ToLower(contactInfo.PhoneNumber), searchQuery)
+}
+
+// paginateContacts returns the requested slice of contacts. An out-of-range
+// page yields an empty slice rather than an error.
+func paginateContacts(contacts []ContactInfo, page, limit int) []ContactInfo {
+	startIndex := (page - 1) * limit
+	if startIndex >= len(contacts) {
+		return []ContactInfo{}
+	}
+	return contacts[startIndex:min(startIndex+limit, len(contacts))]
 }
 
 // GET /contacts/:instanceId?page=1&limit=50&search=john
@@ -298,112 +372,25 @@ func GetContactList(c echo.Context) error {
 		return errResp
 	}
 
-	// Parse pagination params (default: page=1, limit=50, max=50)
-	page := 1
-	limit := 50
+	page := queryPositiveInt(c, "page", 1)
+	limit := min(queryPositiveInt(c, "limit", 50), 50)
 	searchQuery := strings.ToLower(strings.TrimSpace(c.QueryParam("search")))
-
-	if pageStr := c.QueryParam("page"); pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
-		}
-	}
-
-	if limitStr := c.QueryParam("limit"); limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 50 {
-			limit = l
-		}
-	}
 
 	contacts, err := session.Client.Store.Contacts.GetAllContacts(context.Background())
 	if err != nil {
 		return ErrorResponse(c, 500, "Failed to retrieve contact list", "FETCH_FAILED", err.Error())
 	}
 
-	// Build contact list with name fallback and LID resolution
-	contactMap := make(map[string]ContactInfo)
-	for jid, contact := range contacts {
-		contactInfo := ContactInfo{
-			JID:         jid.String(),
-			PhoneNumber: jid.User,
-			Name:        contact.FullName,
-			IsGroup:     jid.Server == "g.us",
-			IsLID:       jid.Server == "lid",
-		}
-
-		// Skip all LID contacts (linked devices)
-		if jid.Server == "lid" {
-			continue
-		}
-
-		if contactInfo.Name == "" {
-			if contact.BusinessName != "" {
-				contactInfo.Name = contact.BusinessName
-			} else if contact.PushName != "" {
-				contactInfo.Name = contact.PushName
-			} else {
-				contactInfo.Name = contactInfo.PhoneNumber
-			}
-		}
-
-		// Deduplicate: group by phone number, prefer @s.whatsapp.net over @lid
-		key := contactInfo.PhoneNumber
-		if existing, exists := contactMap[key]; exists {
-			// Keep @s.whatsapp.net over @lid
-			if existing.IsLID && !contactInfo.IsLID {
-				contactMap[key] = contactInfo
-			}
-			// If both are same type, keep the one with better name
-			if existing.IsLID == contactInfo.IsLID && contactInfo.Name != contactInfo.PhoneNumber {
-				contactMap[key] = contactInfo
-			}
-		} else {
-			contactMap[key] = contactInfo
+	allContacts := make([]ContactInfo, 0, len(contacts))
+	for _, contactInfo := range buildContactMap(contacts) {
+		if matchesContactSearch(contactInfo, searchQuery) {
+			allContacts = append(allContacts, contactInfo)
 		}
 	}
 
-	// Convert map to slice and apply search filter
-	allContacts := make([]ContactInfo, 0, len(contactMap))
-	for _, contactInfo := range contactMap {
-		// Filter by search query (case-insensitive)
-		if searchQuery != "" {
-			nameMatch := strings.Contains(strings.ToLower(contactInfo.Name), searchQuery)
-			jidMatch := strings.Contains(strings.ToLower(contactInfo.JID), searchQuery)
-			phoneMatch := strings.Contains(strings.ToLower(contactInfo.PhoneNumber), searchQuery)
-			if !nameMatch && !jidMatch && !phoneMatch {
-				continue
-			}
-		}
-
-		allContacts = append(allContacts, contactInfo)
-	}
-
-	// Calculate pagination
 	totalContacts := len(allContacts)
 	totalPages := (totalContacts + limit - 1) / limit
-
-	startIndex := (page - 1) * limit
-	endIndex := startIndex + limit
-
-	// Handle out of range page
-	if startIndex >= totalContacts {
-		return SuccessResponse(c, 200, "Contact list retrieved successfully", map[string]any{
-			"total":       totalContacts,
-			"page":        page,
-			"limit":       limit,
-			"totalPages":  totalPages,
-			"search":      searchQuery,
-			"contacts":    []ContactInfo{},
-			"hasNextPage": false,
-			"hasPrevPage": page > 1,
-		})
-	}
-
-	if endIndex > totalContacts {
-		endIndex = totalContacts
-	}
-
-	paginatedContacts := allContacts[startIndex:endIndex]
+	paginatedContacts := paginateContacts(allContacts, page, limit)
 
 	return SuccessResponse(c, 200, "Contact list retrieved successfully", map[string]any{
 		"total":       totalContacts,
@@ -437,57 +424,17 @@ func ExportContacts(c echo.Context) error {
 		return errResp
 	}
 
-	// Get all contacts
 	contacts, err := session.Client.Store.Contacts.GetAllContacts(context.Background())
 	if err != nil {
 		return ErrorResponse(c, 500, "Failed to retrieve contact list", "FETCH_FAILED", err.Error())
 	}
 
-	// Build contact list with deduplication
-	contactMap := make(map[string]ContactInfo)
-	for jid, contact := range contacts {
-		// Skip LID contacts
-		if jid.Server == "lid" {
-			continue
-		}
-
-		name := contact.FullName
-		if name == "" {
-			if contact.BusinessName != "" {
-				name = contact.BusinessName
-			} else if contact.PushName != "" {
-				name = contact.PushName
-			} else {
-				name = jid.User
-			}
-		}
-
-		contactInfo := ContactInfo{
-			PhoneNumber: jid.User,
-			Name:        name,
-			JID:         jid.String(),
-			IsGroup:     jid.Server == "g.us",
-		}
-
-		// Deduplicate by phone number
-		key := contactInfo.PhoneNumber
-		if existing, exists := contactMap[key]; exists {
-			// Prefer non-group over group, or better name
-			if !existing.IsGroup || contactInfo.Name != contactInfo.PhoneNumber {
-				contactMap[key] = contactInfo
-			}
-		} else {
-			contactMap[key] = contactInfo
-		}
-	}
-
-	// Convert to slice
+	contactMap := buildContactMap(contacts)
 	allContacts := make([]ContactInfo, 0, len(contactMap))
 	for _, contact := range contactMap {
 		allContacts = append(allContacts, contact)
 	}
 
-	// Export based on format
 	if format == "xlsx" {
 		return exportToExcel(c, allContacts, instanceID)
 	}
