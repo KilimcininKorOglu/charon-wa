@@ -82,82 +82,130 @@ func GetWorkerConfig(c echo.Context) error {
 	return SuccessResponse(c, http.StatusOK, "Worker config retrieved successfully", config)
 }
 
+// bindWorkerConfigRequest reads the request body, checks the required fields
+// and the caller's circle access, and applies the request defaults in place.
+// The second result is a written ErrorResponse for the caller to propagate.
+func bindWorkerConfigRequest(c echo.Context, claims *service.Claims, isAdmin bool) (*WorkerConfigRequest, error) {
+	var req WorkerConfigRequest
+	if err := c.Bind(&req); err != nil {
+		return nil, ErrorResponse(c, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST", err.Error())
+	}
+
+	if req.WorkerName == "" || req.Circle == "" || req.Application == "" {
+		return nil, ErrorResponse(c, http.StatusBadRequest, "worker_name, circle, and application are required", "VALIDATION_ERROR", "")
+	}
+
+	if errResp := checkCircleAccess(c, claims, isAdmin, req.Circle); errResp != nil {
+		return nil, errResp
+	}
+
+	if req.WebhookURL != "" {
+		if err := helper.ValidateExternalURL(req.WebhookURL); err != nil {
+			return nil, ErrorResponse(c, http.StatusBadRequest, "Invalid webhook URL", "INVALID_URL", err.Error())
+		}
+	}
+
+	applyWorkerConfigDefaults(&req)
+	return &req, nil
+}
+
+// checkCircleAccess confirms a non-admin caller owns an instance in the circle.
+// The result is a written ErrorResponse, or nil when access is allowed.
+func checkCircleAccess(c echo.Context, claims *service.Claims, isAdmin bool, circle string) error {
+	if isAdmin {
+		return nil
+	}
+
+	allowedCircles, err := model.GetUserInstanceCircles(claims.UserID)
+	if err != nil {
+		return ErrorResponse(c, http.StatusInternalServerError, "Failed to verify circle access", "INTERNAL_ERROR", err.Error())
+	}
+	if !slices.Contains(allowedCircles, circle) {
+		return ErrorResponse(c, http.StatusForbidden, "You don't have access to instances in this circle", "FORBIDDEN", "")
+	}
+	return nil
+}
+
+// applyWorkerConfigDefaults fills in the message type and interval floor.
+// interval_seconds is the legacy name for the minimum interval.
+func applyWorkerConfigDefaults(req *WorkerConfigRequest) {
+	if req.MessageType != "direct" && req.MessageType != "group" {
+		req.MessageType = "direct" // Default
+	}
+	if req.IntervalMinSeconds < 1 && req.IntervalSeconds > 0 {
+		req.IntervalMinSeconds = req.IntervalSeconds
+	}
+	if req.IntervalMinSeconds < 1 {
+		req.IntervalMinSeconds = 10 // Default
+	}
+}
+
+// applyWorkerConfigRequest copies a validated request onto a config, leaving
+// the config's existing Enabled and AllowMedia values when the request omits them.
+func applyWorkerConfigRequest(config *model.WorkerConfig, req *WorkerConfigRequest) {
+	config.WorkerName = req.WorkerName
+	config.Circle = req.Circle
+	config.Application = req.Application
+	config.MessageType = req.MessageType
+	config.IntervalSeconds = req.IntervalMinSeconds
+	config.IntervalMaxSeconds = req.IntervalMaxSeconds
+	config.WebhookURL = sql.NullString{String: req.WebhookURL, Valid: req.WebhookURL != ""}
+	config.WebhookSecret = sql.NullString{String: req.WebhookSecret, Valid: req.WebhookSecret != ""}
+
+	if req.Enabled != nil {
+		config.Enabled = *req.Enabled
+	}
+	if req.AllowMedia != nil {
+		config.AllowMedia = *req.AllowMedia
+	}
+}
+
+// loadOwnedWorkerConfig reads the config named by the :id path param and checks
+// the caller may act on it. A user reaches only their own configs; an admin
+// reaches all. The second result is a written ErrorResponse.
+func loadOwnedWorkerConfig(c echo.Context, claims *service.Claims, isAdmin bool) (*model.WorkerConfig, error) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return nil, ErrorResponse(c, http.StatusBadRequest, "Invalid config ID", "BAD_REQUEST", "")
+	}
+
+	existingConfig, err := model.GetWorkerConfigByID(c.Request().Context(), id)
+	if err != nil {
+		return nil, ErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve worker config", "INTERNAL_ERROR", err.Error())
+	}
+	if existingConfig == nil {
+		return nil, ErrorResponse(c, http.StatusNotFound, "Worker config not found", "NOT_FOUND", "")
+	}
+	if !isAdmin && existingConfig.UserID != int(claims.UserID) {
+		return nil, ErrorResponse(c, http.StatusForbidden, "Access denied", "FORBIDDEN", "")
+	}
+
+	return existingConfig, nil
+}
+
 // CreateWorkerConfig creates a new worker configuration
 func CreateWorkerConfig(c echo.Context) error {
 	claims := getClaims(c)
 	if claims == nil {
 		return ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
 	}
-
-	var req WorkerConfigRequest
-	if err := c.Bind(&req); err != nil {
-		return ErrorResponse(c, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST", err.Error())
-	}
-
-	// Validation
-	if req.WorkerName == "" || req.Circle == "" || req.Application == "" {
-		return ErrorResponse(c, http.StatusBadRequest, "worker_name, circle, and application are required", "VALIDATION_ERROR", "")
-	}
-
-	// Non-admin users can only use circles they have access to
 	isAdmin := claims.Role == "admin"
-	if !isAdmin {
-		allowedCircles, err := model.GetUserInstanceCircles(claims.UserID)
-		if err != nil {
-			return ErrorResponse(c, http.StatusInternalServerError, "Failed to verify circle access", "INTERNAL_ERROR", err.Error())
-		}
-		circleAllowed := slices.Contains(allowedCircles, req.Circle)
-		if !circleAllowed {
-			return ErrorResponse(c, http.StatusForbidden, "You don't have access to instances in this circle", "FORBIDDEN", "")
-		}
+
+	req, errResp := bindWorkerConfigRequest(c, claims, isAdmin)
+	if errResp != nil {
+		return errResp
 	}
 
-	if req.MessageType != "direct" && req.MessageType != "group" {
-		req.MessageType = "direct" // Default
-	}
-
-	if req.IntervalMinSeconds < 1 && req.IntervalSeconds > 0 {
-		req.IntervalMinSeconds = req.IntervalSeconds
-	}
-
-	if req.IntervalMinSeconds < 1 {
-		req.IntervalMinSeconds = 10 // Default
-	}
-
-	// Validate webhook URL if provided
-	if req.WebhookURL != "" {
-		if err := helper.ValidateExternalURL(req.WebhookURL); err != nil {
-			return ErrorResponse(c, http.StatusBadRequest, "Invalid webhook URL", "INVALID_URL", err.Error())
-		}
-	}
-
-	// Map to model
 	config := model.WorkerConfig{
-		WorkerName:         req.WorkerName,
-		Circle:             req.Circle,
-		Application:        req.Application,
-		MessageType:        req.MessageType,
-		IntervalSeconds:    req.IntervalMinSeconds,
-		IntervalMaxSeconds: req.IntervalMaxSeconds,
-		Enabled:            true,  // Default
-		AllowMedia:         false, // Default to false
-		WebhookURL:         sql.NullString{String: req.WebhookURL, Valid: req.WebhookURL != ""},
-		WebhookSecret:      sql.NullString{String: req.WebhookSecret, Valid: req.WebhookSecret != ""},
+		Enabled:    true,  // Default
+		AllowMedia: false, // Default to false
 	}
-
-	if req.Enabled != nil {
-		config.Enabled = *req.Enabled
-	}
-
-	if req.AllowMedia != nil {
-		config.AllowMedia = *req.AllowMedia
-	}
+	applyWorkerConfigRequest(&config, req)
 
 	// Set user_id from authenticated user (admin can override)
+	config.UserID = int(claims.UserID)
 	if isAdmin && req.UserID != 0 {
 		config.UserID = req.UserID
-	} else {
-		config.UserID = int(claims.UserID)
 	}
 
 	if err := model.CreateWorkerConfig(c.Request().Context(), &config); err != nil {
@@ -173,92 +221,22 @@ func UpdateWorkerConfig(c echo.Context) error {
 	if claims == nil {
 		return ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
 	}
-
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		return ErrorResponse(c, http.StatusBadRequest, "Invalid config ID", "BAD_REQUEST", "")
-	}
-
-	// Check if config exists and user has permission
-	existingConfig, err := model.GetWorkerConfigByID(c.Request().Context(), id)
-	if err != nil {
-		return ErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve worker config", "INTERNAL_ERROR", err.Error())
-	}
-
-	if existingConfig == nil {
-		return ErrorResponse(c, http.StatusNotFound, "Worker config not found", "NOT_FOUND", "")
-	}
-
-	// Authorization: user can only update own configs, admin can update all
 	isAdmin := claims.Role == "admin"
-	if !isAdmin && existingConfig.UserID != int(claims.UserID) {
-		return ErrorResponse(c, http.StatusForbidden, "Access denied", "FORBIDDEN", "")
+
+	existingConfig, errResp := loadOwnedWorkerConfig(c, claims, isAdmin)
+	if errResp != nil {
+		return errResp
 	}
 
-	var req WorkerConfigRequest
-	if err := c.Bind(&req); err != nil {
-		return ErrorResponse(c, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST", err.Error())
+	req, errResp := bindWorkerConfigRequest(c, claims, isAdmin)
+	if errResp != nil {
+		return errResp
 	}
 
-	// Validation
-	if req.WorkerName == "" || req.Circle == "" || req.Application == "" {
-		return ErrorResponse(c, http.StatusBadRequest, "worker_name, circle, and application are required", "VALIDATION_ERROR", "")
-	}
-
-	// Non-admin users can only use circles they have access to
-	if !isAdmin {
-		allowedCircles, err := model.GetUserInstanceCircles(claims.UserID)
-		if err != nil {
-			return ErrorResponse(c, http.StatusInternalServerError, "Failed to verify circle access", "INTERNAL_ERROR", err.Error())
-		}
-		circleAllowed := slices.Contains(allowedCircles, req.Circle)
-		if !circleAllowed {
-			return ErrorResponse(c, http.StatusForbidden, "You don't have access to instances in this circle", "FORBIDDEN", "")
-		}
-	}
-
-	if req.MessageType != "direct" && req.MessageType != "group" {
-		req.MessageType = "direct"
-	}
-
-	if req.IntervalMinSeconds < 1 && req.IntervalSeconds > 0 {
-		req.IntervalMinSeconds = req.IntervalSeconds
-	}
-
-	if req.IntervalMinSeconds < 1 {
-		req.IntervalMinSeconds = 10
-	}
-
-	// Validate webhook URL if provided
-	if req.WebhookURL != "" {
-		if err := helper.ValidateExternalURL(req.WebhookURL); err != nil {
-			return ErrorResponse(c, http.StatusBadRequest, "Invalid webhook URL", "INVALID_URL", err.Error())
-		}
-	}
-
-	// Map to model
-	config := model.WorkerConfig{
-		ID:                 id,
-		UserID:             existingConfig.UserID, // Preserve original user_id
-		WorkerName:         req.WorkerName,
-		Circle:             req.Circle,
-		Application:        req.Application,
-		MessageType:        req.MessageType,
-		IntervalSeconds:    req.IntervalMinSeconds,
-		IntervalMaxSeconds: req.IntervalMaxSeconds,
-		Enabled:            existingConfig.Enabled, // Default to existing
-		AllowMedia:         existingConfig.AllowMedia,
-		WebhookURL:         sql.NullString{String: req.WebhookURL, Valid: req.WebhookURL != ""},
-		WebhookSecret:      sql.NullString{String: req.WebhookSecret, Valid: req.WebhookSecret != ""},
-	}
-
-	if req.Enabled != nil {
-		config.Enabled = *req.Enabled
-	}
-
-	if req.AllowMedia != nil {
-		config.AllowMedia = *req.AllowMedia
-	}
+	// Start from the stored config so user_id, enabled and allow_media survive
+	// a request that does not mention them.
+	config := *existingConfig
+	applyWorkerConfigRequest(&config, req)
 
 	if err := model.UpdateWorkerConfig(c.Request().Context(), &config); err != nil {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to update worker config", "INTERNAL_ERROR", err.Error())
@@ -274,28 +252,12 @@ func DeleteWorkerConfig(c echo.Context) error {
 		return ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
 	}
 
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		return ErrorResponse(c, http.StatusBadRequest, "Invalid config ID", "BAD_REQUEST", "")
+	existingConfig, errResp := loadOwnedWorkerConfig(c, claims, claims.Role == "admin")
+	if errResp != nil {
+		return errResp
 	}
 
-	// Check if config exists and user has permission
-	existingConfig, err := model.GetWorkerConfigByID(c.Request().Context(), id)
-	if err != nil {
-		return ErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve worker config", "INTERNAL_ERROR", err.Error())
-	}
-
-	if existingConfig == nil {
-		return ErrorResponse(c, http.StatusNotFound, "Worker config not found", "NOT_FOUND", "")
-	}
-
-	// Authorization: user can only delete own configs, admin can delete all
-	isAdmin := claims.Role == "admin"
-	if !isAdmin && existingConfig.UserID != int(claims.UserID) {
-		return ErrorResponse(c, http.StatusForbidden, "Access denied", "FORBIDDEN", "")
-	}
-
-	if err := model.DeleteWorkerConfig(c.Request().Context(), id); err != nil {
+	if err := model.DeleteWorkerConfig(c.Request().Context(), existingConfig.ID); err != nil {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to delete worker config", "INTERNAL_ERROR", err.Error())
 	}
 
@@ -309,33 +271,20 @@ func ToggleWorkerConfig(c echo.Context) error {
 		return ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
 	}
 
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		return ErrorResponse(c, http.StatusBadRequest, "Invalid config ID", "BAD_REQUEST", "")
+	existingConfig, errResp := loadOwnedWorkerConfig(c, claims, claims.Role == "admin")
+	if errResp != nil {
+		return errResp
 	}
 
-	// Check if config exists and user has permission
-	existingConfig, err := model.GetWorkerConfigByID(c.Request().Context(), id)
-	if err != nil {
-		return ErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve worker config", "INTERNAL_ERROR", err.Error())
-	}
-
-	if existingConfig == nil {
-		return ErrorResponse(c, http.StatusNotFound, "Worker config not found", "NOT_FOUND", "")
-	}
-
-	// Authorization: user can only toggle own configs, admin can toggle all
-	isAdmin := claims.Role == "admin"
-	if !isAdmin && existingConfig.UserID != int(claims.UserID) {
-		return ErrorResponse(c, http.StatusForbidden, "Access denied", "FORBIDDEN", "")
-	}
-
-	if err := model.ToggleWorkerConfig(c.Request().Context(), id); err != nil {
+	if err := model.ToggleWorkerConfig(c.Request().Context(), existingConfig.ID); err != nil {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to toggle worker config", "INTERNAL_ERROR", err.Error())
 	}
 
 	// Get updated config
-	updatedConfig, _ := model.GetWorkerConfigByID(c.Request().Context(), id)
+	updatedConfig, err := model.GetWorkerConfigByID(c.Request().Context(), existingConfig.ID)
+	if err != nil {
+		return ErrorResponse(c, http.StatusInternalServerError, "Worker config toggled but could not be re-read", "INTERNAL_ERROR", err.Error())
+	}
 
 	return SuccessResponse(c, http.StatusOK, "Worker config toggled successfully", updatedConfig)
 }
