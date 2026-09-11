@@ -264,16 +264,16 @@ func httpErrorHandler(err error, c echo.Context) {
 	}
 }
 
-// requestLogValues emits one JSON line per request. latency_ms carries the
-// nanosecond value Echo's ${latency} template produced before this handler.
+// requestLogValues emits one JSON line per request. latency_ms is milliseconds
+// with microsecond resolution, so sub-millisecond requests do not round to zero.
 func requestLogValues(_ echo.Context, v middleware.RequestLoggerValues) error {
 	bytesIn := v.ContentLength
 	if bytesIn == "" {
 		bytesIn = "0"
 	}
-	log.Printf(`{"time":"%s","request_id":"%s","remote_ip":"%s","method":"%s","uri":"%s","status":%d,"latency_ms":%d,"bytes_in":%s,"bytes_out":%d}`,
+	log.Printf(`{"time":"%s","request_id":"%s","remote_ip":"%s","method":"%s","uri":"%s","status":%d,"latency_ms":%.3f,"bytes_in":%s,"bytes_out":%d}`,
 		v.StartTime.Format(time.RFC3339Nano), v.RequestID, v.RemoteIP,
-		v.Method, v.URI, v.Status, v.Latency.Nanoseconds(), bytesIn, v.ResponseSize)
+		v.Method, v.URI, v.Status, float64(v.Latency.Microseconds())/1000, bytesIn, v.ResponseSize)
 	return nil
 }
 
