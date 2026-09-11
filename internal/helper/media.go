@@ -52,41 +52,47 @@ func DetectMediaTypeFromBytes(data []byte) string {
 	}
 }
 
+// imageMimeTypes maps an image extension to its MIME type.
+var imageMimeTypes = map[string]string{
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".png":  "image/png",
+	".gif":  "image/gif",
+	".webp": "image/webp",
+}
+
+// documentMimeTypes maps a document extension to its MIME type.
+var documentMimeTypes = map[string]string{
+	".pdf":  "application/pdf",
+	".doc":  "application/msword",
+	".docx": "application/msword",
+	".xls":  "application/vnd.ms-excel",
+	".xlsx": "application/vnd.ms-excel",
+	".zip":  "application/zip",
+}
+
+// lookupMimeType returns the mapped MIME type, or fallback for an unknown
+// extension.
+func lookupMimeType(table map[string]string, ext, fallback string) string {
+	if mime, ok := table[ext]; ok {
+		return mime
+	}
+	return fallback
+}
+
 // GetMimeType returns MIME type based on media type
 func GetMimeType(mediaType, filename string) string {
 	ext := strings.ToLower(filepath.Ext(filename))
 
 	switch mediaType {
 	case "image":
-		switch ext {
-		case ".jpg", ".jpeg":
-			return "image/jpeg"
-		case ".png":
-			return "image/png"
-		case ".gif":
-			return "image/gif"
-		case ".webp":
-			return "image/webp"
-		default:
-			return "image/jpeg"
-		}
+		return lookupMimeType(imageMimeTypes, ext, "image/jpeg")
 	case "video":
 		return "video/mp4"
 	case "audio":
 		return "audio/mpeg"
 	default: // document
-		switch ext {
-		case ".pdf":
-			return "application/pdf"
-		case ".doc", ".docx":
-			return "application/msword"
-		case ".xls", ".xlsx":
-			return "application/vnd.ms-excel"
-		case ".zip":
-			return "application/zip"
-		default:
-			return "application/octet-stream"
-		}
+		return lookupMimeType(documentMimeTypes, ext, "application/octet-stream")
 	}
 }
 
@@ -164,6 +170,69 @@ var mediaDownloadClient = &http.Client{
 	},
 }
 
+// newDownloadRequest builds the GET request used for external media downloads.
+// The browser-like headers exist because several CDNs answer 403 without them.
+func newDownloadRequest(url string) (*http.Request, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %v", err)
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "application/pdf,image/*,video/*,audio/*,*/*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("Referer", url)
+	return req, nil
+}
+
+// readDownloadBody streams the response body with a hard size ceiling. It never
+// buffers more than maxDownloadSize+1 bytes of an untrusted response.
+func readDownloadBody(resp *http.Response) ([]byte, error) {
+	if resp.ContentLength > maxDownloadSize {
+		return nil, fmt.Errorf("file too large: %d bytes (max %d)", resp.ContentLength, maxDownloadSize)
+	}
+
+	buf := &bytes.Buffer{}
+	n, err := io.Copy(buf, io.LimitReader(resp.Body, maxDownloadSize+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %v", err)
+	}
+	if n > maxDownloadSize {
+		return nil, fmt.Errorf("file too large: exceeds %d bytes", maxDownloadSize)
+	}
+	if n == 0 {
+		return nil, fmt.Errorf("downloaded file is empty")
+	}
+	return buf.Bytes(), nil
+}
+
+// filenameFromContentDisposition extracts the filename parameter, or "" when
+// the header carries none.
+func filenameFromContentDisposition(header string) string {
+	_, after, found := strings.Cut(header, "filename=")
+	if !found {
+		return ""
+	}
+	return strings.Trim(after, "\"")
+}
+
+// downloadFilename resolves the saved name from the Content-Disposition header,
+// then the URL path, and finally the Content-Type extension.
+func downloadFilename(resp *http.Response, url string) string {
+	filename := filenameFromContentDisposition(resp.Header.Get("Content-Disposition"))
+
+	if filename == "" {
+		filename, _, _ = strings.Cut(filepath.Base(url), "?")
+	}
+
+	if filename == "." || filename == "/" || filename == "" {
+		return "document" + getExtensionFromContentType(resp.Header.Get("Content-Type"))
+	}
+	return filename
+}
+
 // DownloadFile downloads file from URL and returns data and filename
 func DownloadFile(url string) ([]byte, string, error) {
 	// Validate URL to prevent SSRF attacks
@@ -171,22 +240,12 @@ func DownloadFile(url string) ([]byte, string, error) {
 		return nil, "", fmt.Errorf("URL validation failed: %v", err)
 	}
 
-	client := mediaDownloadClient
-
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := newDownloadRequest(url)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to create request: %v", err)
+		return nil, "", err
 	}
 
-	// Add comprehensive headers to avoid 403
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "application/pdf,image/*,video/*,audio/*,*/*")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	req.Header.Set("Accept-Encoding", "gzip, deflate")
-	req.Header.Set("Connection", "keep-alive")
-	req.Header.Set("Referer", url)
-
-	resp, err := client.Do(req)
+	resp, err := mediaDownloadClient.Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to download: %v", err)
 	}
@@ -196,57 +255,12 @@ func DownloadFile(url string) ([]byte, string, error) {
 		return nil, "", fmt.Errorf("failed to download: status %d (%s)", resp.StatusCode, resp.Status)
 	}
 
-	// Reject early when the server advertises an oversized payload.
-	if resp.ContentLength > maxDownloadSize {
-		return nil, "", fmt.Errorf("file too large: %d bytes (max %d)", resp.ContentLength, maxDownloadSize)
-	}
-
-	// Stream up to maxDownloadSize+1 bytes so overflow can be detected without buffering the whole body.
-	limited := io.LimitReader(resp.Body, maxDownloadSize+1)
-	buf := &bytes.Buffer{}
-	n, err := io.Copy(buf, limited)
+	data, err := readDownloadBody(resp)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to read response: %v", err)
-	}
-	if n > maxDownloadSize {
-		return nil, "", fmt.Errorf("file too large: exceeds %d bytes", maxDownloadSize)
-	}
-	if n == 0 {
-		return nil, "", fmt.Errorf("downloaded file is empty")
-	}
-	data := buf.Bytes()
-
-	// Extract filename from URL or Content-Disposition header
-	filename := ""
-
-	// Try to get filename from Content-Disposition header
-	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
-		if strings.Contains(cd, "filename=") {
-			parts := strings.Split(cd, "filename=")
-			if len(parts) > 1 {
-				filename = strings.Trim(parts[1], "\"")
-			}
-		}
+		return nil, "", err
 	}
 
-	// Fallback to URL path
-	if filename == "" {
-		filename = filepath.Base(url)
-		// Remove query parameters from filename
-		if idx := strings.Index(filename, "?"); idx != -1 {
-			filename = filename[:idx]
-		}
-	}
-
-	// Default fallback
-	if filename == "." || filename == "/" || filename == "" {
-		// Try to detect extension from content-type
-		contentType := resp.Header.Get("Content-Type")
-		ext := getExtensionFromContentType(contentType)
-		filename = "document" + ext
-	}
-
-	return data, filename, nil
+	return data, downloadFilename(resp, url), nil
 }
 
 // Helper to get file extension from Content-Type
