@@ -1,11 +1,8 @@
 package warming
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"charon/internal/handler"
 	warmingModel "charon/internal/model/warming"
@@ -14,12 +11,45 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// scriptLineValidationRules are the request-level failures shared by the create
+// and update paths.
+var scriptLineValidationRules = []errorRule{
+	{sentinel: warmingService.ErrScriptLineActorRoleInvalid, status: http.StatusBadRequest, code: "ACTOR_ROLE_INVALID"},
+	{sentinel: warmingService.ErrScriptLineMessageContentRequired, status: http.StatusBadRequest, code: "MESSAGE_CONTENT_REQUIRED"},
+	{sentinel: warmingService.ErrScriptLineSequenceOrderInvalid, status: http.StatusBadRequest, code: "SEQUENCE_ORDER_INVALID"},
+}
+
+// scriptNotFoundRule maps the service's "script not found" wording onto a 404.
+var scriptNotFoundRule = errorRule{
+	substring: "script not found", status: http.StatusNotFound,
+	message: "Script not found", code: "SCRIPT_NOT_FOUND",
+}
+
+// duplicateSequenceRule maps a sequence_order collision onto a 409.
+var duplicateSequenceRule = errorRule{
+	substring: "already exists", status: http.StatusConflict, code: "DUPLICATE_SEQUENCE",
+}
+
+// lineNotFoundRule maps a missing line onto a 404.
+var lineNotFoundRule = errorRule{
+	sentinel: warmingService.ErrScriptLineNotFound, status: http.StatusNotFound,
+	message: "Script line not found", code: "NOT_FOUND",
+}
+
+// scriptLineResponses converts a slice of lines to their response form.
+func scriptLineResponses(lines []warmingModel.WarmingScriptLine) []warmingModel.WarmingScriptLineResponse {
+	responses := make([]warmingModel.WarmingScriptLineResponse, 0, len(lines))
+	for _, line := range lines {
+		responses = append(responses, warmingModel.ToWarmingScriptLineResponse(line))
+	}
+	return responses
+}
+
 // CreateWarmingScriptLine handles POST /warming/scripts/:scriptId/lines
 func CreateWarmingScriptLine(c echo.Context) error {
-	scriptIDParam := c.Param("scriptId")
-	scriptID, err := strconv.ParseInt(scriptIDParam, 10, 64)
-	if err != nil {
-		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid script ID", "INVALID_SCRIPT_ID", err.Error())
+	scriptID, errResp := pathInt64(c, "scriptId", "script ID", "INVALID_SCRIPT_ID")
+	if errResp != nil {
+		return errResp
 	}
 
 	var req warmingModel.CreateWarmingScriptLineRequest
@@ -27,46 +57,18 @@ func CreateWarmingScriptLine(c echo.Context) error {
 		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST", err.Error())
 	}
 
-	// Extract user context from session
-	userID, ok := c.Get("user_id").(int64)
-	if !ok {
-		return handler.ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
+	cl, errResp := requireCaller(c)
+	if errResp != nil {
+		return errResp
 	}
-
-	role, ok := c.Get("role").(string)
-	if !ok {
-		role = "user"
-	}
-	isAdmin := role == "admin"
-
-	// RBAC: Check parent script ownership (Skip if admin)
-	if !isAdmin {
-		isOwner, err := warmingModel.CheckScriptOwnership(int(scriptID), userID)
-		if err != nil || !isOwner {
-			return handler.ErrorResponse(c, http.StatusForbidden, "You don't have permission to manage lines for this script", "FORBIDDEN", "")
-		}
+	if errResp := requireScriptOwner(c, scriptID, cl, "You don't have permission to manage lines for this script"); errResp != nil {
+		return errResp
 	}
 
 	line, err := warmingService.CreateWarmingScriptLineService(scriptID, &req)
 	if err != nil {
-		// Handle validation errors
-		if errors.Is(err, warmingService.ErrScriptLineActorRoleInvalid) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "ACTOR_ROLE_INVALID", "")
-		}
-		if errors.Is(err, warmingService.ErrScriptLineMessageContentRequired) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "MESSAGE_CONTENT_REQUIRED", "")
-		}
-		if errors.Is(err, warmingService.ErrScriptLineSequenceOrderInvalid) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "SEQUENCE_ORDER_INVALID", "")
-		}
-		if strings.Contains(err.Error(), "script not found") {
-			return handler.ErrorResponse(c, http.StatusNotFound, "Script not found", "SCRIPT_NOT_FOUND", "")
-		}
-		if strings.Contains(err.Error(), "already exists") {
-			return handler.ErrorResponse(c, http.StatusConflict, err.Error(), "DUPLICATE_SEQUENCE", "")
-		}
-
-		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to create script line", "CREATE_FAILED", err.Error())
+		rules := append(append([]errorRule{}, scriptLineValidationRules...), scriptNotFoundRule, duplicateSequenceRule)
+		return mapServiceError(c, err, rules, "Failed to create script line", "CREATE_FAILED")
 	}
 
 	resp := warmingModel.ToWarmingScriptLineResponse(*line)
@@ -75,52 +77,26 @@ func CreateWarmingScriptLine(c echo.Context) error {
 
 // GetAllWarmingScriptLines handles GET /warming/scripts/:scriptId/lines
 func GetAllWarmingScriptLines(c echo.Context) error {
-	scriptIDParam := c.Param("scriptId")
-	scriptID, err := strconv.ParseInt(scriptIDParam, 10, 64)
-	if err != nil {
-		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid script ID", "INVALID_SCRIPT_ID", err.Error())
+	scriptID, errResp := pathInt64(c, "scriptId", "script ID", "INVALID_SCRIPT_ID")
+	if errResp != nil {
+		return errResp
 	}
 
-	// Extract user context from session
-	userID, ok := c.Get("user_id").(int64)
-	if !ok {
-		return handler.ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
+	cl, errResp := requireCaller(c)
+	if errResp != nil {
+		return errResp
 	}
-
-	role, ok := c.Get("role").(string)
-	if !ok {
-		role = "user"
-	}
-	isAdmin := role == "admin"
-
-	// RBAC: Check parent script access (Skip if admin)
-	// For GetAll (read operation), allow access to public scripts (created_by NULL)
-	if !isAdmin {
-		script, err := warmingModel.GetWarmingScriptByID(int(scriptID))
-		if err != nil {
-			return handler.ErrorResponse(c, http.StatusNotFound, "Script not found", "SCRIPT_NOT_FOUND", "")
-		}
-
-		// If script is not public (has owner) and user is not the owner, deny access
-		if script.CreatedBy.Valid && script.CreatedBy.Int64 != userID {
-			return handler.ErrorResponse(c, http.StatusForbidden, "You don't have permission to view lines for this script", "FORBIDDEN", "")
-		}
+	// Reading also allows public scripts, so this is not the ownership check.
+	if errResp := requireScriptReadAccess(c, scriptID, cl, "You don't have permission to view lines for this script"); errResp != nil {
+		return errResp
 	}
 
 	lines, err := warmingService.GetAllWarmingScriptLinesService(scriptID)
 	if err != nil {
-		if strings.Contains(err.Error(), "script not found") {
-			return handler.ErrorResponse(c, http.StatusNotFound, "Script not found", "SCRIPT_NOT_FOUND", "")
-		}
-		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to get script lines", "GET_FAILED", err.Error())
+		return mapServiceError(c, err, []errorRule{scriptNotFoundRule}, "Failed to get script lines", "GET_FAILED")
 	}
 
-	// Convert to response format
-	var responses []warmingModel.WarmingScriptLineResponse
-	for _, line := range lines {
-		responses = append(responses, warmingModel.ToWarmingScriptLineResponse(line))
-	}
-
+	responses := scriptLineResponses(lines)
 	return handler.SuccessResponse(c, http.StatusOK, "Script lines retrieved successfully", map[string]any{
 		"total": len(responses),
 		"lines": responses,
@@ -129,34 +105,26 @@ func GetAllWarmingScriptLines(c echo.Context) error {
 
 // GetWarmingScriptLineByID handles GET /warming/scripts/:scriptId/lines/:id
 func GetWarmingScriptLineByID(c echo.Context) error {
-	scriptIDParam := c.Param("scriptId")
-	scriptID, err := strconv.ParseInt(scriptIDParam, 10, 64)
-	if err != nil {
-		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid script ID", "INVALID_SCRIPT_ID", err.Error())
+	scriptID, errResp := pathInt64(c, "scriptId", "script ID", "INVALID_SCRIPT_ID")
+	if errResp != nil {
+		return errResp
+	}
+	lineID, errResp := pathInt64(c, "id", "line ID", "INVALID_LINE_ID")
+	if errResp != nil {
+		return errResp
 	}
 
-	lineIDParam := c.Param("id")
-	lineID, err := strconv.ParseInt(lineIDParam, 10, 64)
-	if err != nil {
-		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid line ID", "INVALID_LINE_ID", err.Error())
+	cl, errResp := requireCaller(c)
+	if errResp != nil {
+		return errResp
 	}
-
-	// Check parent script ownership for non-admin users
-	userID, _ := c.Get("user_id").(int64)
-	role, _ := c.Get("role").(string)
-	if role != "admin" {
-		isOwner, err := warmingModel.CheckScriptOwnership(int(scriptID), userID)
-		if err != nil || !isOwner {
-			return handler.ErrorResponse(c, http.StatusForbidden, "Access denied", "FORBIDDEN", "")
-		}
+	if errResp := requireScriptOwner(c, scriptID, cl, "Access denied"); errResp != nil {
+		return errResp
 	}
 
 	line, err := warmingService.GetWarmingScriptLineByIDService(scriptID, lineID)
 	if err != nil {
-		if errors.Is(err, warmingService.ErrScriptLineNotFound) {
-			return handler.ErrorResponse(c, http.StatusNotFound, "Script line not found", "NOT_FOUND", "")
-		}
-		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to get script line", "GET_FAILED", err.Error())
+		return mapServiceError(c, err, []errorRule{lineNotFoundRule}, "Failed to get script line", "GET_FAILED")
 	}
 
 	resp := warmingModel.ToWarmingScriptLineResponse(*line)
@@ -165,16 +133,13 @@ func GetWarmingScriptLineByID(c echo.Context) error {
 
 // UpdateWarmingScriptLine handles PUT /warming/scripts/:scriptId/lines/:id
 func UpdateWarmingScriptLine(c echo.Context) error {
-	scriptIDParam := c.Param("scriptId")
-	scriptID, err := strconv.ParseInt(scriptIDParam, 10, 64)
-	if err != nil {
-		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid script ID", "INVALID_SCRIPT_ID", err.Error())
+	scriptID, errResp := pathInt64(c, "scriptId", "script ID", "INVALID_SCRIPT_ID")
+	if errResp != nil {
+		return errResp
 	}
-
-	lineIDParam := c.Param("id")
-	lineID, err := strconv.ParseInt(lineIDParam, 10, 64)
-	if err != nil {
-		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid line ID", "INVALID_LINE_ID", err.Error())
+	lineID, errResp := pathInt64(c, "id", "line ID", "INVALID_LINE_ID")
+	if errResp != nil {
+		return errResp
 	}
 
 	var req warmingModel.UpdateWarmingScriptLineRequest
@@ -182,46 +147,17 @@ func UpdateWarmingScriptLine(c echo.Context) error {
 		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST", err.Error())
 	}
 
-	// Extract user context from session
-	userID, ok := c.Get("user_id").(int64)
-	if !ok {
-		return handler.ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
+	cl, errResp := requireCaller(c)
+	if errResp != nil {
+		return errResp
+	}
+	if errResp := requireScriptOwner(c, scriptID, cl, "You don't have permission to update this line"); errResp != nil {
+		return errResp
 	}
 
-	role, ok := c.Get("role").(string)
-	if !ok {
-		role = "user"
-	}
-	isAdmin := role == "admin"
-
-	// RBAC: Check parent script ownership (Skip if admin)
-	if !isAdmin {
-		isOwner, err := warmingModel.CheckScriptOwnership(int(scriptID), userID)
-		if err != nil || !isOwner {
-			return handler.ErrorResponse(c, http.StatusForbidden, "You don't have permission to update this line", "FORBIDDEN", "")
-		}
-	}
-
-	err = warmingService.UpdateWarmingScriptLineService(scriptID, lineID, &req)
-	if err != nil {
-		// Handle validation errors
-		if errors.Is(err, warmingService.ErrScriptLineActorRoleInvalid) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "ACTOR_ROLE_INVALID", "")
-		}
-		if errors.Is(err, warmingService.ErrScriptLineMessageContentRequired) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "MESSAGE_CONTENT_REQUIRED", "")
-		}
-		if errors.Is(err, warmingService.ErrScriptLineSequenceOrderInvalid) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "SEQUENCE_ORDER_INVALID", "")
-		}
-		if errors.Is(err, warmingService.ErrScriptLineNotFound) {
-			return handler.ErrorResponse(c, http.StatusNotFound, "Script line not found", "NOT_FOUND", "")
-		}
-		if strings.Contains(err.Error(), "already exists") {
-			return handler.ErrorResponse(c, http.StatusConflict, err.Error(), "DUPLICATE_SEQUENCE", "")
-		}
-
-		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to update script line", "UPDATE_FAILED", err.Error())
+	if err := warmingService.UpdateWarmingScriptLineService(scriptID, lineID, &req); err != nil {
+		rules := append(append([]errorRule{}, scriptLineValidationRules...), lineNotFoundRule, duplicateSequenceRule)
+		return mapServiceError(c, err, rules, "Failed to update script line", "UPDATE_FAILED")
 	}
 
 	return handler.SuccessResponse(c, http.StatusOK, "Line updated successfully", map[string]any{
@@ -231,44 +167,25 @@ func UpdateWarmingScriptLine(c echo.Context) error {
 
 // DeleteWarmingScriptLine handles DELETE /warming/scripts/:scriptId/lines/:id
 func DeleteWarmingScriptLine(c echo.Context) error {
-	scriptIDParam := c.Param("scriptId")
-	scriptID, err := strconv.ParseInt(scriptIDParam, 10, 64)
-	if err != nil {
-		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid script ID", "INVALID_SCRIPT_ID", err.Error())
+	scriptID, errResp := pathInt64(c, "scriptId", "script ID", "INVALID_SCRIPT_ID")
+	if errResp != nil {
+		return errResp
+	}
+	lineID, errResp := pathInt64(c, "id", "line ID", "INVALID_LINE_ID")
+	if errResp != nil {
+		return errResp
 	}
 
-	lineIDParam := c.Param("id")
-	lineID, err := strconv.ParseInt(lineIDParam, 10, 64)
-	if err != nil {
-		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid line ID", "INVALID_LINE_ID", err.Error())
+	cl, errResp := requireCaller(c)
+	if errResp != nil {
+		return errResp
+	}
+	if errResp := requireScriptOwner(c, scriptID, cl, "You don't have permission to delete this line"); errResp != nil {
+		return errResp
 	}
 
-	// Extract user context from session
-	userID, ok := c.Get("user_id").(int64)
-	if !ok {
-		return handler.ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
-	}
-
-	role, ok := c.Get("role").(string)
-	if !ok {
-		role = "user"
-	}
-	isAdmin := role == "admin"
-
-	// RBAC: Check parent script ownership (Skip if admin)
-	if !isAdmin {
-		isOwner, err := warmingModel.CheckScriptOwnership(int(scriptID), userID)
-		if err != nil || !isOwner {
-			return handler.ErrorResponse(c, http.StatusForbidden, "You don't have permission to delete this line", "FORBIDDEN", "")
-		}
-	}
-
-	err = warmingService.DeleteWarmingScriptLineService(scriptID, lineID)
-	if err != nil {
-		if errors.Is(err, warmingService.ErrScriptLineNotFound) {
-			return handler.ErrorResponse(c, http.StatusNotFound, "Script line not found", "NOT_FOUND", "")
-		}
-		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to delete script line", "DELETE_FAILED", err.Error())
+	if err := warmingService.DeleteWarmingScriptLineService(scriptID, lineID); err != nil {
+		return mapServiceError(c, err, []errorRule{lineNotFoundRule}, "Failed to delete script line", "DELETE_FAILED")
 	}
 
 	return handler.SuccessResponse(c, http.StatusOK, "Line deleted successfully", map[string]any{
@@ -278,10 +195,9 @@ func DeleteWarmingScriptLine(c echo.Context) error {
 
 // GenerateWarmingScriptLines handles POST /warming/scripts/:scriptId/lines/generate
 func GenerateWarmingScriptLines(c echo.Context) error {
-	scriptIDParam := c.Param("scriptId")
-	scriptID, err := strconv.ParseInt(scriptIDParam, 10, 64)
-	if err != nil {
-		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid script ID", "INVALID_SCRIPT_ID", err.Error())
+	scriptID, errResp := pathInt64(c, "scriptId", "script ID", "INVALID_SCRIPT_ID")
+	if errResp != nil {
+		return errResp
 	}
 
 	var req struct {
@@ -291,35 +207,20 @@ func GenerateWarmingScriptLines(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST", err.Error())
 	}
-
-	// Default category to casual if not provided
 	if req.Category == "" {
 		req.Category = "casual"
 	}
 
-	// Extract user context from session
-	userID, ok := c.Get("user_id").(int64)
-	if !ok {
-		return handler.ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
+	cl, errResp := requireCaller(c)
+	if errResp != nil {
+		return errResp
 	}
-
-	role, ok := c.Get("role").(string)
-	if !ok {
-		role = "user"
-	}
-	isAdmin := role == "admin"
-
-	// RBAC: Check parent script ownership (Skip if admin)
-	if !isAdmin {
-		isOwner, err := warmingModel.CheckScriptOwnership(int(scriptID), userID)
-		if err != nil || !isOwner {
-			return handler.ErrorResponse(c, http.StatusForbidden, "You don't have permission to modify this script", "FORBIDDEN", "")
-		}
+	if errResp := requireScriptOwner(c, scriptID, cl, "You don't have permission to modify this script"); errResp != nil {
+		return errResp
 	}
 
 	// Validate category by checking if templates exist in database
-	_, err = warmingService.GetConversationTemplatesFromDB(req.Category)
-	if err != nil {
+	if _, err := warmingService.GetConversationTemplatesFromDB(req.Category); err != nil {
 		return handler.ErrorResponse(c, http.StatusBadRequest,
 			fmt.Sprintf("No templates found for category '%s'. Please create templates first or use existing categories.", req.Category),
 			"INVALID_CATEGORY", "")
@@ -327,77 +228,50 @@ func GenerateWarmingScriptLines(c echo.Context) error {
 
 	lines, err := warmingService.GenerateWarmingScriptLinesService(scriptID, req.Category, req.LineCount)
 	if err != nil {
-		if errors.Is(err, warmingService.ErrTemplateNotFound) {
-			return handler.ErrorResponse(c, http.StatusBadRequest,
-				fmt.Sprintf("No templates found for category '%s'", req.Category),
-				"INVALID_CATEGORY", err.Error())
-		}
-		if strings.Contains(err.Error(), "script not found") {
-			return handler.ErrorResponse(c, http.StatusNotFound, "Script not found", "SCRIPT_NOT_FOUND", "")
-		}
-		if strings.Contains(err.Error(), "line_count") {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "INVALID_LINE_COUNT", "")
-		}
-		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to generate script lines", "GENERATE_FAILED", err.Error())
+		return mapServiceError(c, err, []errorRule{
+			{sentinel: warmingService.ErrTemplateNotFound, status: http.StatusBadRequest,
+				message: fmt.Sprintf("No templates found for category '%s'", req.Category), code: "INVALID_CATEGORY"},
+			scriptNotFoundRule,
+			{substring: "line_count", status: http.StatusBadRequest, code: "INVALID_LINE_COUNT"},
+		}, "Failed to generate script lines", "GENERATE_FAILED")
 	}
 
-	// Convert to response format
-	var responses []warmingModel.WarmingScriptLineResponse
-	for _, line := range lines {
-		responses = append(responses, warmingModel.ToWarmingScriptLineResponse(line))
-	}
-
-	return handler.SuccessResponse(c, http.StatusOK, fmt.Sprintf("%d script lines generated successfully", len(responses)), map[string]any{
-		"created":  len(responses),
-		"category": req.Category,
-		"lines":    responses,
-	})
+	responses := scriptLineResponses(lines)
+	return handler.SuccessResponse(c, http.StatusOK,
+		fmt.Sprintf("%d script lines generated successfully", len(responses)), map[string]any{
+			"created":  len(responses),
+			"category": req.Category,
+			"lines":    responses,
+		})
 }
 
 // ReorderWarmingScriptLines handles PUT /warming/scripts/:scriptId/lines/reorder
 func ReorderWarmingScriptLines(c echo.Context) error {
-	scriptIDParam := c.Param("scriptId")
-	scriptID, err := strconv.ParseInt(scriptIDParam, 10, 64)
-	if err != nil {
-		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid script ID", "INVALID_SCRIPT_ID", err.Error())
+	scriptID, errResp := pathInt64(c, "scriptId", "script ID", "INVALID_SCRIPT_ID")
+	if errResp != nil {
+		return errResp
 	}
 
 	var req warmingModel.ReorderScriptLinesRequest
 	if err := c.Bind(&req); err != nil {
 		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST", err.Error())
 	}
-
-	// Validate request
 	if len(req.Lines) == 0 {
 		return handler.ErrorResponse(c, http.StatusBadRequest, "No lines provided for reordering", "EMPTY_LINES", "")
 	}
 
-	// Extract user context from session
-	userID, ok := c.Get("user_id").(int64)
-	if !ok {
-		return handler.ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
+	cl, errResp := requireCaller(c)
+	if errResp != nil {
+		return errResp
+	}
+	if errResp := requireScriptOwner(c, scriptID, cl, "You don't have permission to reorder lines for this script"); errResp != nil {
+		return errResp
 	}
 
-	role, ok := c.Get("role").(string)
-	if !ok {
-		role = "user"
-	}
-	isAdmin := role == "admin"
-
-	// RBAC: Check parent script ownership (Skip if admin)
-	if !isAdmin {
-		isOwner, err := warmingModel.CheckScriptOwnership(int(scriptID), userID)
-		if err != nil || !isOwner {
-			return handler.ErrorResponse(c, http.StatusForbidden, "You don't have permission to reorder lines for this script", "FORBIDDEN", "")
-		}
-	}
-
-	err = warmingModel.ReorderScriptLines(scriptID, &req)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return handler.ErrorResponse(c, http.StatusNotFound, err.Error(), "NOT_FOUND", "")
-		}
-		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to reorder script lines", "REORDER_FAILED", err.Error())
+	if err := warmingModel.ReorderScriptLines(scriptID, &req); err != nil {
+		return mapServiceError(c, err, []errorRule{
+			{substring: "not found", status: http.StatusNotFound, code: "NOT_FOUND"},
+		}, "Failed to reorder script lines", "REORDER_FAILED")
 	}
 
 	return handler.SuccessResponse(c, http.StatusOK, "Script lines reordered successfully", map[string]any{

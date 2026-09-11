@@ -123,53 +123,48 @@ func UpdateWarmingTemplate(c echo.Context) error {
 		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST", err.Error())
 	}
 
-	// Extract user context from session
-	userID, ok := c.Get("user_id").(int64)
-	if !ok {
-		return handler.ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
+	cl, errResp := requireCaller(c)
+	if errResp != nil {
+		return errResp
+	}
+	if errResp := requireTemplateOwner(c, id, cl, "You don't have permission to update this template"); errResp != nil {
+		return errResp
 	}
 
-	role, ok := c.Get("role").(string)
-	if !ok {
-		role = "user"
-	}
-	isAdmin := role == "admin"
-
-	// RBAC: Check ownership (Skip if admin)
-	if !isAdmin {
-		isOwner, err := warmingModel.CheckTemplateOwnership(id, userID)
-		if err != nil || !isOwner {
-			return handler.ErrorResponse(c, http.StatusForbidden, "You don't have permission to update this template", "FORBIDDEN", "")
-		}
-	}
-
-	err = warmingService.UpdateWarmingTemplateService(id, &req)
-	if err != nil {
-		if errors.Is(err, warmingService.ErrTemplateCategoryRequired) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "CATEGORY_REQUIRED", "")
-		}
-		if errors.Is(err, warmingService.ErrTemplateNameRequired) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "NAME_REQUIRED", "")
-		}
-		if errors.Is(err, warmingService.ErrTemplateStructureInvalid) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "STRUCTURE_INVALID", "")
-		}
-		if errors.Is(err, warmingService.ErrTemplateNotFound) {
-			return handler.ErrorResponse(c, http.StatusNotFound, "Template not found", "NOT_FOUND", "")
-		}
-		if strings.Contains(err.Error(), "actorRole") || strings.Contains(err.Error(), "messageOptions") {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "VALIDATION_ERROR", "")
-		}
-		if strings.Contains(err.Error(), "already exists") {
-			return handler.ErrorResponse(c, http.StatusConflict, err.Error(), "DUPLICATE_TEMPLATE", "")
-		}
-
-		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to update template", "UPDATE_FAILED", err.Error())
+	if err := warmingService.UpdateWarmingTemplateService(id, &req); err != nil {
+		return mapServiceError(c, err, templateErrorRules(), "Failed to update template", "UPDATE_FAILED")
 	}
 
 	return handler.SuccessResponse(c, http.StatusOK, "Template updated successfully", map[string]any{
 		"id": id,
 	})
+}
+
+// requireTemplateOwner confirms the caller owns the template. An admin passes
+// unconditionally. The result is a written ErrorResponse, or nil.
+func requireTemplateOwner(c echo.Context, templateID int64, cl caller, denyMessage string) error {
+	if cl.IsAdmin {
+		return nil
+	}
+
+	isOwner, err := warmingModel.CheckTemplateOwnership(templateID, cl.UserID)
+	if err != nil || !isOwner {
+		return handler.ErrorResponse(c, http.StatusForbidden, denyMessage, "FORBIDDEN", "")
+	}
+	return nil
+}
+
+// templateErrorRules maps the template service's failures onto HTTP responses.
+func templateErrorRules() []errorRule {
+	return []errorRule{
+		{sentinel: warmingService.ErrTemplateCategoryRequired, status: http.StatusBadRequest, code: "CATEGORY_REQUIRED"},
+		{sentinel: warmingService.ErrTemplateNameRequired, status: http.StatusBadRequest, code: "NAME_REQUIRED"},
+		{sentinel: warmingService.ErrTemplateStructureInvalid, status: http.StatusBadRequest, code: "STRUCTURE_INVALID"},
+		{sentinel: warmingService.ErrTemplateNotFound, status: http.StatusNotFound, message: "Template not found", code: "NOT_FOUND"},
+		{substring: "actorRole", status: http.StatusBadRequest, code: "VALIDATION_ERROR"},
+		{substring: "messageOptions", status: http.StatusBadRequest, code: "VALIDATION_ERROR"},
+		{substring: "already exists", status: http.StatusConflict, code: "DUPLICATE_TEMPLATE"},
+	}
 }
 
 // DeleteWarmingTemplate handles DELETE /warming/templates/:id

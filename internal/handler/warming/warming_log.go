@@ -19,41 +19,26 @@ func GetAllWarmingLogs(c echo.Context) error {
 	status := c.QueryParam("status")
 	limitStr := c.QueryParam("limit")
 
-	limit := 100 // Default
-	if limitStr != "" {
-		parsedLimit, err := strconv.Atoi(limitStr)
-		if err == nil {
-			limit = parsedLimit
-		}
-	}
-	if limit < 1 || limit > 500 {
+	// Anything unparsable or outside 1..500 falls back to the default.
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 || limit > 500 {
 		limit = 100
 	}
 
-	// Extract user context from session
-	userID, ok := c.Get("user_id").(int64)
-	if !ok {
-		return handler.ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
+	cl, errResp := requireCaller(c)
+	if errResp != nil {
+		return errResp
 	}
 
-	role, ok := c.Get("role").(string)
-	if !ok {
-		role = "user"
-	}
-	isAdmin := role == "admin"
-
-	logs, err := warmingService.GetAllWarmingLogsService(roomID, status, limit, userID, isAdmin)
+	logs, err := warmingService.GetAllWarmingLogsService(roomID, status, limit, cl.UserID, cl.IsAdmin)
 	if err != nil {
-		if strings.Contains(err.Error(), "invalid status") {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "INVALID_STATUS", "")
-		}
-		if strings.Contains(err.Error(), "invalid room ID") {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "INVALID_ROOM_ID", "")
-		}
-		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to get logs", "GET_FAILED", err.Error())
+		return mapServiceError(c, err, []errorRule{
+			{substring: "invalid status", status: http.StatusBadRequest, code: "INVALID_STATUS"},
+			{substring: "invalid room ID", status: http.StatusBadRequest, code: "INVALID_ROOM_ID"},
+		}, "Failed to get logs", "GET_FAILED")
 	}
 
-	var responses []warmingModel.WarmingLogResponse
+	responses := make([]warmingModel.WarmingLogResponse, 0, len(logs))
 	for _, log := range logs {
 		responses = append(responses, warmingModel.ToWarmingLogResponse(log))
 	}

@@ -20,44 +20,32 @@ func CreateWarmingRoom(c echo.Context) error {
 		return handler.ErrorResponse(c, http.StatusBadRequest, "Invalid request body", "BAD_REQUEST", err.Error())
 	}
 
-	// Extract user ID from session context
-	userID, ok := c.Get("user_id").(int64)
-	if !ok {
-		return handler.ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
+	cl, errResp := requireCaller(c)
+	if errResp != nil {
+		return errResp
 	}
 
-	role, _ := c.Get("role").(string)
-	isAdmin := role == "admin"
-
-	room, err := warmingService.CreateWarmingRoomService(&req, userID, isAdmin)
+	room, err := warmingService.CreateWarmingRoomService(&req, cl.UserID, cl.IsAdmin)
 	if err != nil {
-		if errors.Is(err, warmingService.ErrRoomNameRequired) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "NAME_REQUIRED", "")
-		}
-		if errors.Is(err, warmingService.ErrRoomSenderRequired) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "SENDER_REQUIRED", "")
-		}
-		if errors.Is(err, warmingService.ErrRoomReceiverRequired) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "RECEIVER_REQUIRED", "")
-		}
-		if errors.Is(err, warmingService.ErrRoomScriptRequired) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "SCRIPT_REQUIRED", "")
-		}
-		if errors.Is(err, warmingService.ErrRoomIntervalInvalid) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "INTERVAL_INVALID", "")
-		}
-		if errors.Is(err, warmingService.ErrRoomSameInstance) {
-			return handler.ErrorResponse(c, http.StatusBadRequest, err.Error(), "SAME_INSTANCE", "")
-		}
-		if strings.Contains(err.Error(), "script not found") {
-			return handler.ErrorResponse(c, http.StatusNotFound, "Script not found", "SCRIPT_NOT_FOUND", "")
-		}
-
-		return handler.ErrorResponse(c, http.StatusInternalServerError, "Failed to create room", "CREATE_FAILED", err.Error())
+		return mapServiceError(c, err, roomValidationRules(), "Failed to create room", "CREATE_FAILED")
 	}
 
 	resp := warmingModel.ToWarmingRoomResponse(*room)
 	return handler.SuccessResponse(c, http.StatusOK, "Room created successfully", resp)
+}
+
+// roomValidationRules maps the room service's validation failures onto HTTP
+// responses.
+func roomValidationRules() []errorRule {
+	return []errorRule{
+		{sentinel: warmingService.ErrRoomNameRequired, status: http.StatusBadRequest, code: "NAME_REQUIRED"},
+		{sentinel: warmingService.ErrRoomSenderRequired, status: http.StatusBadRequest, code: "SENDER_REQUIRED"},
+		{sentinel: warmingService.ErrRoomReceiverRequired, status: http.StatusBadRequest, code: "RECEIVER_REQUIRED"},
+		{sentinel: warmingService.ErrRoomScriptRequired, status: http.StatusBadRequest, code: "SCRIPT_REQUIRED"},
+		{sentinel: warmingService.ErrRoomIntervalInvalid, status: http.StatusBadRequest, code: "INTERVAL_INVALID"},
+		{sentinel: warmingService.ErrRoomSameInstance, status: http.StatusBadRequest, code: "SAME_INSTANCE"},
+		{substring: "script not found", status: http.StatusNotFound, message: "Script not found", code: "SCRIPT_NOT_FOUND"},
+	}
 }
 
 // GetAllWarmingRooms handles GET /warming/rooms
