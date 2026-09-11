@@ -28,9 +28,22 @@ RUN go mod download
 # Copy source and build
 COPY . .
 
+# Version metadata for main.version / main.commit / main.buildDate.
+# .git is excluded from the build context, so the values arrive as build args.
+# VERSION falls back to the VERSION file, BUILD_DATE to the build timestamp.
+# COMMIT needs Coolify's "Include Source Commit in Build" option, which passes
+# SOURCE_COMMIT into the build; without it the binary reports "unknown".
+ARG VERSION=""
+ARG COMMIT="unknown"
+ARG BUILD_DATE=""
+
 ENV CGO_ENABLED=1
-RUN go build -ldflags "-s -w" -o /out/charon .
-RUN go build -ldflags "-s -w" -o /out/worker ./cmd/worker/
+RUN set -eu; \
+    version="${VERSION:-$(tr -d '[:space:]' < VERSION)}"; \
+    build_date="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"; \
+    ldflags="-s -w -X 'main.version=${version}' -X 'main.commit=${COMMIT}' -X 'main.buildDate=${build_date}'"; \
+    go build -ldflags "${ldflags}" -o /out/charon .; \
+    go build -ldflags "${ldflags}" -o /out/worker ./cmd/worker/
 
 # ============================================
 # Stage 3: Runtime
