@@ -263,6 +263,9 @@ func main() {
 			log.Fatalf("CORS_ALLOW_ORIGINS rejects wildcard '*' when cookies/credentials are allowed")
 		}
 		if !strings.HasPrefix(origin, "http://") && !strings.HasPrefix(origin, "https://") {
+			// origin comes from CORS_ALLOW_ORIGINS, an operator-set environment
+			// variable read once at startup, never from a request.
+			// #nosec G706
 			log.Fatalf("CORS_ALLOW_ORIGINS entry %q must include scheme (http:// or https://)", origin)
 		}
 		allowOrigins = append(allowOrigins, origin)
@@ -647,6 +650,8 @@ func main() {
 	}
 
 	// Log info to verify config
+	// port and baseURL come from PORT and BASEURL, read once at startup.
+	// #nosec G706
 	log.Printf("Server starting on port %s, baseURL=%s", port, baseURL)
 
 	// Bind to all interfaces, not just 127.0.0.1

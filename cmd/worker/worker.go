@@ -40,6 +40,10 @@ type WorkerInstance struct {
 }
 
 func NewWorkerInstance(config WorkerConfig, client *CharonClient) *WorkerInstance {
+	// WorkerName is operator-supplied and prefixes every log line this worker
+	// writes. Sanitize it once here so no later call site can forge a log entry.
+	config.WorkerName = helper.SanitizeLogValue(config.WorkerName)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WorkerInstance{
 		config: config,
@@ -49,17 +53,28 @@ func NewWorkerInstance(config WorkerConfig, client *CharonClient) *WorkerInstanc
 	}
 }
 
+// logf writes one log line prefixed with this worker's name.
+//
+// Every value that reaches it is already safe: NewWorkerInstance sanitizes
+// WorkerName once, and each caller passes any other operator-supplied or
+// remote value through helper.SanitizeLogValue. gosec cannot follow a custom
+// sanitizer, so the G706 justification lives here instead of at every call site.
+func (w *WorkerInstance) logf(format string, args ...any) {
+	// #nosec G706
+	log.Printf("[%s] "+format, append([]any{w.config.WorkerName}, args...)...)
+}
+
 func (w *WorkerInstance) Start() {
 	w.wg.Add(1)
 	defer w.wg.Done()
 
-	log.Printf("[%s] Worker started", w.config.WorkerName)
+	w.logf("Worker started")
 	LogWorkerEvent(w.config.ID, w.config.WorkerName, "INFO", "Worker started")
 
 	for {
 		select {
 		case <-w.ctx.Done():
-			log.Printf("[%s] Worker shutting down...", w.config.WorkerName)
+			w.logf("Worker shutting down...")
 			return
 		default:
 			w.runCycle()
@@ -76,7 +91,7 @@ func (w *WorkerInstance) Start() {
 			// Interruptible sleep
 			select {
 			case <-w.ctx.Done():
-				log.Printf("[%s] Worker shutting down during sleep...", w.config.WorkerName)
+				w.logf("Worker shutting down during sleep...")
 				return
 			case <-time.After(time.Duration(sleepSeconds) * time.Second):
 				// Just continue to next cycle
@@ -108,12 +123,12 @@ func (w *WorkerInstance) runCycle() {
 
 	if err != nil {
 		if err != sql.ErrNoRows {
-			log.Printf("[%s] Error claiming outbox: %v", w.config.WorkerName, err)
+			w.logf("Error claiming outbox: %v", err)
 		}
 		return
 	}
 
-	log.Printf("[%s] Processing message ID: %d to %s", w.config.WorkerName, msg.ID, msg.Destination)
+	w.logf("Processing message ID: %d to %s", msg.ID, helper.SanitizeLogValue(msg.Destination))
 
 	// 2. Validate and Normalize Destination
 	destination := msg.Destination
@@ -121,7 +136,7 @@ func (w *WorkerInstance) runCycle() {
 		// Group ID normalization: append @g.us if missing
 		if !strings.Contains(destination, "@") {
 			destination = destination + "@g.us"
-			log.Printf("[%s] Normalized Group ID: %s", w.config.WorkerName, destination)
+			w.logf("Normalized Group ID: %s", helper.SanitizeLogValue(destination))
 		}
 	} else {
 		// Direct Message normalization
@@ -137,7 +152,7 @@ func (w *WorkerInstance) runCycle() {
 		}
 
 		if !strings.HasPrefix(cleaned, "62") || len(cleaned) < 10 {
-			log.Printf("[%s] Invalid phone number format: %s", w.config.WorkerName, destination)
+			w.logf("Invalid phone number format: %s", helper.SanitizeLogValue(destination))
 			UpdateOutboxFailed(w.ctx, msg.ID, "Invalid phone number format")
 			return
 		}
@@ -148,7 +163,7 @@ func (w *WorkerInstance) runCycle() {
 	instances, err := w.client.GetInstances(w.ctx, w.config.Circle)
 	if err != nil {
 		errMsg := fmt.Sprintf("Error fetching instances: %v", err)
-		log.Printf("[%s] %s", w.config.WorkerName, errMsg)
+		w.logf("%s", helper.SanitizeLogValue(errMsg))
 		LogWorkerEvent(w.config.ID, w.config.WorkerName, "ERROR", errMsg)
 		UpdateOutboxFailed(context.Background(), msg.ID, errMsg)
 		return
@@ -156,7 +171,7 @@ func (w *WorkerInstance) runCycle() {
 
 	if len(instances) == 0 {
 		errMsg := fmt.Sprintf("No used instances found in circle: %s", w.config.Circle)
-		log.Printf("[%s] %s", w.config.WorkerName, errMsg)
+		w.logf("%s", helper.SanitizeLogValue(errMsg))
 		LogWorkerEvent(w.config.ID, w.config.WorkerName, "WARN", errMsg)
 		UpdateOutboxFailed(context.Background(), msg.ID, errMsg)
 		return
@@ -188,17 +203,17 @@ func (w *WorkerInstance) runCycle() {
 
 	if err != nil {
 		errMsg := fmt.Sprintf("Error calling API (Instance %s): %v", selectedInstance.InstanceID, err)
-		log.Printf("[%s] %s", w.config.WorkerName, errMsg)
+		w.logf("%s", helper.SanitizeLogValue(errMsg))
 		LogWorkerEvent(w.config.ID, w.config.WorkerName, "ERROR", errMsg)
 		UpdateOutboxFailed(context.Background(), msg.ID, errMsg)
 		return
 	}
 
 	if success {
-		log.Printf("[%s] Success! Sent ID %d via instance %s (%s)", w.config.WorkerName, msg.ID, selectedInstance.InstanceID, selectedInstance.PhoneNumber)
+		w.logf("Success! Sent ID %d via instance %s (%s)", msg.ID, selectedInstance.InstanceID, selectedInstance.PhoneNumber)
 		dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := UpdateOutboxSuccess(dbCtx, msg.ID, selectedInstance.PhoneNumber); err != nil {
-			log.Printf("[%s] CRITICAL: Failed to update status to success for ID %d: %v", w.config.WorkerName, msg.ID, err)
+			w.logf("CRITICAL: Failed to update status to success for ID %d: %v", msg.ID, err)
 		}
 
 		dbCancel()
@@ -211,10 +226,10 @@ func (w *WorkerInstance) runCycle() {
 		// #nosec G404
 		time.Sleep(time.Duration(rand.Intn(2)+1) * time.Second)
 	} else {
-		log.Printf("[%s] Failed sending ID %d: %s", w.config.WorkerName, msg.ID, apiMsg)
+		w.logf("Failed sending ID %d: %s", msg.ID, helper.SanitizeLogValue(apiMsg))
 		dbCtx2, dbCancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := UpdateOutboxFailed(dbCtx2, msg.ID, apiMsg); err != nil {
-			log.Printf("[%s] CRITICAL: Failed to update status to failed for ID %d: %v", w.config.WorkerName, msg.ID, err)
+			w.logf("CRITICAL: Failed to update status to failed for ID %d: %v", msg.ID, err)
 		}
 		dbCancel2()
 
@@ -251,11 +266,11 @@ func (w *WorkerInstance) sendWebhook(msg *OutboxMessage, status int, statusText 
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("[%s] Webhook marshal error: %v", w.config.WorkerName, err)
+		w.logf("Webhook marshal error: %v", err)
 		return
 	}
 
-	log.Printf("[%s] Sending webhook to: %s", w.config.WorkerName, webhookURL)
+	w.logf("Sending webhook to: %s", helper.SanitizeLogValue(webhookURL))
 
 	// The URL is operator-supplied and guarded twice: handler.CreateWorkerConfig
 	// and handler.UpdateWorkerConfig run helper.ValidateExternalURL before the row
@@ -264,7 +279,7 @@ func (w *WorkerInstance) sendWebhook(msg *OutboxMessage, status int, statusText 
 	// #nosec G704
 	req, err := http.NewRequest("POST", webhookURL, bytes.NewReader(body))
 	if err != nil {
-		log.Printf("[%s] Webhook request error: %v", w.config.WorkerName, err)
+		w.logf("Webhook request error: %v", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -286,15 +301,15 @@ func (w *WorkerInstance) sendWebhook(msg *OutboxMessage, status int, statusText 
 	// #nosec G704
 	resp, err := workerWebhookClient.Do(req)
 	if err != nil {
-		log.Printf("[%s] Webhook send error: %v", w.config.WorkerName, err)
+		w.logf("Webhook send error: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
-		log.Printf("[%s] Webhook returned error status %d: %s", w.config.WorkerName, resp.StatusCode, string(respBody))
+		w.logf("Webhook returned error status %d: %s", resp.StatusCode, helper.SanitizeLogValue(string(respBody)))
 	} else {
-		log.Printf("[%s] Webhook sent successfully to %s", w.config.WorkerName, webhookURL)
+		w.logf("Webhook sent successfully to %s", helper.SanitizeLogValue(webhookURL))
 	}
 }
