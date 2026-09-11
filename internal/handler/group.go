@@ -2,16 +2,10 @@ package handler
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
-	"charon/internal/helper"
 	"charon/internal/model"
-	"charon/internal/service"
 
 	"github.com/labstack/echo/v4"
-	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 )
 
@@ -21,30 +15,37 @@ type SendGroupMessageRequest struct {
 	Message  string `json:"message" validate:"required"`
 }
 
-// GET /groups/:instanceId - List all groups
-func GetGroups(c echo.Context) error {
-	instanceID := c.Param("instanceId")
+// sendGroupMediaRequest is the JSON body of the two media-url group endpoints.
+type sendGroupMediaRequest struct {
+	GroupJID  string `json:"groupJid" validate:"required"`
+	MediaURL  string `json:"mediaUrl" validate:"required"`
+	Caption   string `json:"caption"`
+	MediaType string `json:"mediaType"`
+}
 
-	session, err := service.GetSession(instanceID)
+// parseGroupJID parses a group JID and rejects anything that is not on the
+// group server. The second result is a written ErrorResponse for the caller to
+// propagate.
+func parseGroupJID(c echo.Context, raw string) (types.JID, error) {
+	groupJID, err := types.ParseJID(raw)
 	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "")
+		return types.JID{}, ErrorResponse(c, 400, "Invalid group JID", "INVALID_GROUP_JID", err.Error())
 	}
-
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "")
+	if groupJID.Server != types.GroupServer {
+		return types.JID{}, ErrorResponse(c, 400, "Not a group JID", "NOT_GROUP_JID", "Group JID must end with @g.us")
 	}
+	return groupJID, nil
+}
 
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "")
-	}
-
-	// Get all groups with context
+// listJoinedGroups returns the instance's joined groups in response shape. The
+// second result is a written ErrorResponse for the caller to propagate.
+func listJoinedGroups(c echo.Context, session *model.Session) ([]map[string]any, error) {
 	groups, err := session.Client.GetJoinedGroups(context.Background())
 	if err != nil {
-		return ErrorResponse(c, 500, "Failed to get groups", "GET_GROUPS_FAILED", err.Error())
+		return nil, ErrorResponse(c, 500, "Failed to get groups", "GET_GROUPS_FAILED", err.Error())
 	}
 
-	groupList := make([]map[string]any, 0)
+	groupList := make([]map[string]any, 0, len(groups))
 	for _, groupInfo := range groups {
 		groupList = append(groupList, map[string]any{
 			"jid":          groupInfo.JID.String(),
@@ -55,8 +56,50 @@ func GetGroups(c echo.Context) error {
 			"createdAt":    groupInfo.GroupCreated.Unix(),
 		})
 	}
+	return groupList, nil
+}
+
+// GET /groups/:instanceId - List all groups
+func GetGroups(c echo.Context) error {
+	instanceID := c.Param("instanceId")
+
+	session, errResp := requireConnectedSession(c, instanceID)
+	if errResp != nil {
+		return errResp
+	}
+
+	groupList, errResp := listJoinedGroups(c, session)
+	if errResp != nil {
+		return errResp
+	}
 
 	return SuccessResponse(c, 200, "Groups retrieved", map[string]any{
+		"total":  len(groupList),
+		"groups": groupList,
+	})
+}
+
+// GET /groups/by-number/:phoneNumber - List all groups
+func GetGroupsByNumber(c echo.Context) error {
+	phoneNumber := c.Param("phoneNumber")
+
+	inst, errResp := resolveSenderInstance(c, phoneNumber)
+	if errResp != nil {
+		return errResp
+	}
+
+	session, errResp := requireConnectedSession(c, inst.InstanceID)
+	if errResp != nil {
+		return errResp
+	}
+
+	groupList, errResp := listJoinedGroups(c, session)
+	if errResp != nil {
+		return errResp
+	}
+
+	return SuccessResponse(c, 200, "Groups retrieved", map[string]any{
+		"from":   phoneNumber,
 		"total":  len(groupList),
 		"groups": groupList,
 	})
@@ -70,7 +113,6 @@ func SendGroupMessage(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return ErrorResponse(c, 400, "Invalid request body", "INVALID_REQUEST", err.Error())
 	}
-
 	if req.GroupJID == "" || req.Message == "" {
 		return ErrorResponse(c, 400, "Fields 'groupJid' and 'message' are required", "VALIDATION_ERROR", "")
 	}
@@ -80,33 +122,57 @@ func SendGroupMessage(c echo.Context) error {
 		return errResp
 	}
 
-	// Parse group JID
-	groupJID, err := types.ParseJID(req.GroupJID)
-	if err != nil {
-		return ErrorResponse(c, 400, "Invalid group JID", "INVALID_GROUP_JID", err.Error())
+	groupJID, errResp := parseGroupJID(c, req.GroupJID)
+	if errResp != nil {
+		return errResp
 	}
 
-	// Validate it's a group JID (ends with @g.us)
-	if groupJID.Server != types.GroupServer {
-		return ErrorResponse(c, 400, "Not a group JID", "NOT_GROUP_JID", "Group JID must end with @g.us")
-	}
-
-	// Typing delay simulation
-	messageLength := len(req.Message)
-	helper.ApplyTypingDelay(session.Client, groupJID, messageLength)
-
-	// Create message
-	msg := &waE2E.Message{
-		Conversation: &req.Message,
-	}
-
-	// Send to group
-	resp, err := session.Client.SendMessage(context.Background(), groupJID, msg)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to send message", "SEND_FAILED", err.Error())
+	resp, errResp := sendTextMessage(c, session, groupJID, req.Message)
+	if errResp != nil {
+		return errResp
 	}
 
 	return SuccessResponse(c, 200, "Message sent to group", map[string]any{
+		"messageId": resp.ID,
+		"timestamp": resp.Timestamp.Unix(),
+		"groupJid":  req.GroupJID,
+	})
+}
+
+// POST /send-group/by-number/:phoneNumber - Send text to group by sender number
+func SendGroupMessageByNumber(c echo.Context) error {
+	phoneNumber := c.Param("phoneNumber")
+
+	var req SendGroupMessageRequest
+	if err := c.Bind(&req); err != nil {
+		return ErrorResponse(c, 400, "Invalid request body", "INVALID_REQUEST", err.Error())
+	}
+	if req.GroupJID == "" || req.Message == "" {
+		return ErrorResponse(c, 400, "Fields 'groupJid' and 'message' are required", "VALIDATION_ERROR", "")
+	}
+
+	inst, errResp := resolveSenderInstance(c, phoneNumber)
+	if errResp != nil {
+		return errResp
+	}
+
+	session, errResp := requireConnectedSession(c, inst.InstanceID)
+	if errResp != nil {
+		return errResp
+	}
+
+	groupJID, errResp := parseGroupJID(c, req.GroupJID)
+	if errResp != nil {
+		return errResp
+	}
+
+	resp, errResp := sendTextMessage(c, session, groupJID, req.Message)
+	if errResp != nil {
+		return errResp
+	}
+
+	return SuccessResponse(c, 200, "Message sent to group", map[string]any{
+		"from":      phoneNumber,
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"groupJid":  req.GroupJID,
@@ -129,68 +195,19 @@ func SendGroupMedia(c echo.Context) error {
 		return errResp
 	}
 
-	// Parse group JID
-	groupJID, err := types.ParseJID(groupJid)
-	if err != nil {
-		return ErrorResponse(c, 400, "Invalid group JID", "INVALID_GROUP_JID", err.Error())
+	groupJID, errResp := parseGroupJID(c, groupJid)
+	if errResp != nil {
+		return errResp
 	}
 
-	if groupJID.Server != types.GroupServer {
-		return ErrorResponse(c, 400, "Not a group JID", "NOT_GROUP_JID", "Group JID must end with @g.us")
+	fileData, mediaType, filename, errResp := readUploadedMedia(c)
+	if errResp != nil {
+		return errResp
 	}
 
-	// Get file
-	file, err := c.FormFile("file")
-	if err != nil {
-		return ErrorResponse(c, 400, "File is required", "FILE_REQUIRED", err.Error())
-	}
-
-	mediaType := helper.DetectMediaType(file.Filename)
-
-	maxSize := getMaxFileSize(mediaType)
-	fileData, err := readMultipartUpload(file, maxSize)
-	if err != nil {
-		return ErrorResponse(c, 400, "File too large or unreadable", "FILE_TOO_LARGE",
-			fmt.Sprintf("Type: %s, Max: %d bytes, Error: %v", mediaType, maxSize, err))
-	}
-
-	// Verify content type by magic-byte sniffing — reject spoofed extensions.
-	sniffedType := helper.DetectMediaTypeFromBytes(fileData)
-	if sniffedType != mediaType {
-		sniffedMax := getMaxFileSize(sniffedType)
-		if len(fileData) > sniffedMax {
-			return ErrorResponse(c, 400, "File too large for detected media type", "FILE_TOO_LARGE",
-				fmt.Sprintf("Detected: %s, Max: %d bytes, Got: %d", sniffedType, sniffedMax, len(fileData)))
-		}
-		mediaType = sniffedType
-	}
-
-	var whatsmeowMediaType whatsmeow.MediaType
-	switch mediaType {
-	case "image":
-		whatsmeowMediaType = whatsmeow.MediaImage
-	case "video":
-		whatsmeowMediaType = whatsmeow.MediaVideo
-	case "audio":
-		whatsmeowMediaType = whatsmeow.MediaAudio
-	default:
-		whatsmeowMediaType = whatsmeow.MediaDocument
-	}
-
-	uploaded, err := session.Client.Upload(context.Background(), fileData, whatsmeowMediaType)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to upload media", "UPLOAD_FAILED", err.Error())
-	}
-
-	// Typing delay simulation
-	messageLength := len(caption)
-	helper.ApplyTypingDelay(session.Client, groupJID, messageLength)
-
-	msg := helper.CreateMediaMessage(uploaded, caption, file.Filename, mediaType)
-
-	resp, err := session.Client.SendMessage(context.Background(), groupJID, msg)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to send media", "SEND_FAILED", err.Error())
+	resp, errResp := uploadAndSendMedia(c, session, groupJID, fileData, mediaType, filename, caption)
+	if errResp != nil {
+		return errResp
 	}
 
 	return SuccessResponse(c, 200, "Media sent to group", map[string]any{
@@ -198,224 +215,8 @@ func SendGroupMedia(c echo.Context) error {
 		"timestamp": resp.Timestamp.Unix(),
 		"groupJid":  groupJid,
 		"mediaType": mediaType,
-		"fileName":  file.Filename,
-		"fileSize":  len(fileData),
-	})
-}
-
-// POST /send-group/:instanceId/media-url - Send media from URL to group
-func SendGroupMediaURL(c echo.Context) error {
-	instanceID := c.Param("instanceId")
-
-	var req struct {
-		GroupJID  string `json:"groupJid" validate:"required"`
-		MediaURL  string `json:"mediaUrl" validate:"required"`
-		Caption   string `json:"caption"`
-		MediaType string `json:"mediaType"`
-	}
-
-	if err := c.Bind(&req); err != nil {
-		return ErrorResponse(c, 400, "Invalid request body", "INVALID_REQUEST", err.Error())
-	}
-
-	if req.GroupJID == "" || req.MediaURL == "" {
-		return ErrorResponse(c, 400, "Fields 'groupJid' and 'mediaUrl' are required", "VALIDATION_ERROR", "")
-	}
-
-	session, errResp := requireConnectedSession(c, instanceID)
-	if errResp != nil {
-		return errResp
-	}
-
-	groupJID, err := types.ParseJID(req.GroupJID)
-	if err != nil {
-		return ErrorResponse(c, 400, "Invalid group JID", "INVALID_GROUP_JID", err.Error())
-	}
-
-	if groupJID.Server != types.GroupServer {
-		return ErrorResponse(c, 400, "Not a group JID", "NOT_GROUP_JID", "Group JID must end with @g.us")
-	}
-
-	fileData, filename, err := helper.DownloadFile(req.MediaURL)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to download file", "DOWNLOAD_FAILED", err.Error())
-	}
-
-	mediaType := req.MediaType
-	if mediaType == "" {
-		mediaType = helper.DetectMediaType(filename)
-	}
-
-	maxSize := getMaxFileSize(mediaType)
-	if len(fileData) > maxSize {
-		return ErrorResponse(c, 400, "File too large", "FILE_TOO_LARGE",
-			fmt.Sprintf("File: %d bytes, Max: %d bytes", len(fileData), maxSize))
-	}
-
-	var whatsmeowMediaType whatsmeow.MediaType
-	switch mediaType {
-	case "image":
-		whatsmeowMediaType = whatsmeow.MediaImage
-	case "video":
-		whatsmeowMediaType = whatsmeow.MediaVideo
-	case "audio":
-		whatsmeowMediaType = whatsmeow.MediaAudio
-	default:
-		whatsmeowMediaType = whatsmeow.MediaDocument
-	}
-
-	uploaded, err := session.Client.Upload(context.Background(), fileData, whatsmeowMediaType)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to upload media", "UPLOAD_FAILED", err.Error())
-	}
-
-	// Typing delay simulation
-	messageLength := len(req.Caption)
-	helper.ApplyTypingDelay(session.Client, groupJID, messageLength)
-
-	msg := helper.CreateMediaMessage(uploaded, req.Caption, filename, mediaType)
-
-	resp, err := session.Client.SendMessage(context.Background(), groupJID, msg)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to send media", "SEND_FAILED", err.Error())
-	}
-
-	return SuccessResponse(c, 200, "Media sent to group", map[string]any{
-		"messageId": resp.ID,
-		"timestamp": resp.Timestamp.Unix(),
-		"groupJid":  req.GroupJID,
-		"mediaType": mediaType,
 		"fileName":  filename,
 		"fileSize":  len(fileData),
-	})
-}
-
-// GET /groups/by-number/:phoneNumber - List all groups
-func GetGroupsByNumber(c echo.Context) error {
-	phoneNumber := c.Param("phoneNumber")
-
-	inst, err := model.GetActiveInstanceByPhoneNumber(phoneNumber)
-	if err != nil {
-		if errors.Is(err, model.ErrNoActiveInstance) {
-			return ErrorResponse(c, 404, "No active instance for this phone number", "NO_ACTIVE_INSTANCE", "Please login / scan QR for this number")
-		}
-		return ErrorResponse(c, 500, "Failed to get instance for this phone number", "DB_ERROR", err.Error())
-	}
-
-	// Permission Check
-	userClaims, _ := c.Get("user_claims").(*service.Claims)
-	if userClaims != nil && userClaims.Role != "admin" {
-		_, err := model.CheckUserInstancePermission(userClaims.UserID, inst.InstanceID)
-		if err != nil {
-			return ErrorResponse(c, 403, "Insufficient permission to use this phone number", "FORBIDDEN", "")
-		}
-	}
-
-	session, err := service.GetSession(inst.InstanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "")
-	}
-
-	if !session.IsConnected {
-		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "")
-	}
-
-	if !session.Client.IsConnected() {
-		return ErrorResponse(c, 400, "WhatsApp connection lost", "CONNECTION_LOST", "")
-	}
-
-	groups, err := session.Client.GetJoinedGroups(context.Background())
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to get groups", "GET_GROUPS_FAILED", err.Error())
-	}
-
-	groupList := make([]map[string]any, 0)
-	for _, groupInfo := range groups {
-		groupList = append(groupList, map[string]any{
-			"jid":          groupInfo.JID.String(),
-			"name":         groupInfo.Name,
-			"topic":        groupInfo.Topic,
-			"participants": len(groupInfo.Participants),
-			"ownerJid":     groupInfo.OwnerJID.String(),
-			"createdAt":    groupInfo.GroupCreated.Unix(),
-		})
-	}
-
-	return SuccessResponse(c, 200, "Groups retrieved", map[string]any{
-		"from":   phoneNumber,
-		"total":  len(groupList),
-		"groups": groupList,
-	})
-}
-
-// POST /send-group/by-number/:phoneNumber - Send text to group by sender number
-func SendGroupMessageByNumber(c echo.Context) error {
-	phoneNumber := c.Param("phoneNumber")
-
-	var req SendGroupMessageRequest
-	if err := c.Bind(&req); err != nil {
-		return ErrorResponse(c, 400, "Invalid request body", "INVALID_REQUEST", err.Error())
-	}
-
-	if req.GroupJID == "" || req.Message == "" {
-		return ErrorResponse(c, 400, "Fields 'groupJid' and 'message' are required", "VALIDATION_ERROR", "")
-	}
-
-	// 1. Find active instance by sender number
-	inst, err := model.GetActiveInstanceByPhoneNumber(phoneNumber)
-	if err != nil {
-		if errors.Is(err, model.ErrNoActiveInstance) {
-			return ErrorResponse(c, 404, "No active instance for this phone number", "NO_ACTIVE_INSTANCE", "Please login / scan QR for this number")
-		}
-		return ErrorResponse(c, 500, "Failed to get instance for this phone number", "DB_ERROR", err.Error())
-	}
-
-	// Permission Check
-	userClaims, _ := c.Get("user_claims").(*service.Claims)
-	if userClaims != nil && userClaims.Role != "admin" {
-		_, err := model.CheckUserInstancePermission(userClaims.UserID, inst.InstanceID)
-		if err != nil {
-			return ErrorResponse(c, 403, "Insufficient permission to use this phone number", "FORBIDDEN", "")
-		}
-	}
-
-	// 2. Get session from memory by instance_id
-	session, errResp := requireConnectedSession(c, inst.InstanceID)
-	if errResp != nil {
-		return errResp
-	}
-
-	// Parse group JID
-	groupJID, err := types.ParseJID(req.GroupJID)
-	if err != nil {
-		return ErrorResponse(c, 400, "Invalid group JID", "INVALID_GROUP_JID", err.Error())
-	}
-
-	// Validate it's a group JID (ends with @g.us)
-	if groupJID.Server != types.GroupServer {
-		return ErrorResponse(c, 400, "Not a group JID", "NOT_GROUP_JID", "Group JID must end with @g.us")
-	}
-
-	// Typing delay simulation
-	messageLength := len(req.Message)
-	helper.ApplyTypingDelay(session.Client, groupJID, messageLength)
-
-	// Create message
-	msg := &waE2E.Message{
-		Conversation: &req.Message,
-	}
-
-	// Send to group
-	resp, err := session.Client.SendMessage(context.Background(), groupJID, msg)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to send message", "SEND_FAILED", err.Error())
-	}
-
-	return SuccessResponse(c, 200, "Message sent to group", map[string]any{
-		"from":      phoneNumber,
-		"messageId": resp.ID,
-		"timestamp": resp.Timestamp.Unix(),
-		"groupJid":  req.GroupJID,
 	})
 }
 
@@ -430,92 +231,29 @@ func SendGroupMediaByNumber(c echo.Context) error {
 		return ErrorResponse(c, 400, "Field 'groupJid' is required", "VALIDATION_ERROR", "")
 	}
 
-	// 1. Find active instance by sender number
-	inst, err := model.GetActiveInstanceByPhoneNumber(phoneNumber)
-	if err != nil {
-		if errors.Is(err, model.ErrNoActiveInstance) {
-			return ErrorResponse(c, 404, "No active instance for this phone number", "NO_ACTIVE_INSTANCE", "Please login / scan QR for this number")
-		}
-		return ErrorResponse(c, 500, "Failed to get instance for this phone number", "DB_ERROR", err.Error())
+	inst, errResp := resolveSenderInstance(c, phoneNumber)
+	if errResp != nil {
+		return errResp
 	}
 
-	// Permission Check
-	userClaims, _ := c.Get("user_claims").(*service.Claims)
-	if userClaims != nil && userClaims.Role != "admin" {
-		_, err := model.CheckUserInstancePermission(userClaims.UserID, inst.InstanceID)
-		if err != nil {
-			return ErrorResponse(c, 403, "Insufficient permission to use this phone number", "FORBIDDEN", "")
-		}
-	}
-
-	// 2. Get session from memory by instance_id
 	session, errResp := requireConnectedSession(c, inst.InstanceID)
 	if errResp != nil {
 		return errResp
 	}
 
-	// Parse group JID
-	groupJID, err := types.ParseJID(groupJid)
-	if err != nil {
-		return ErrorResponse(c, 400, "Invalid group JID", "INVALID_GROUP_JID", err.Error())
+	groupJID, errResp := parseGroupJID(c, groupJid)
+	if errResp != nil {
+		return errResp
 	}
 
-	if groupJID.Server != types.GroupServer {
-		return ErrorResponse(c, 400, "Not a group JID", "NOT_GROUP_JID", "Group JID must end with @g.us")
+	fileData, mediaType, filename, errResp := readUploadedMedia(c)
+	if errResp != nil {
+		return errResp
 	}
 
-	// Get file
-	file, err := c.FormFile("file")
-	if err != nil {
-		return ErrorResponse(c, 400, "File is required", "FILE_REQUIRED", err.Error())
-	}
-
-	mediaType := helper.DetectMediaType(file.Filename)
-
-	maxSize := getMaxFileSize(mediaType)
-	fileData, err := readMultipartUpload(file, maxSize)
-	if err != nil {
-		return ErrorResponse(c, 400, "File too large or unreadable", "FILE_TOO_LARGE",
-			fmt.Sprintf("Type: %s, Max: %d bytes, Error: %v", mediaType, maxSize, err))
-	}
-
-	// Verify content type by magic-byte sniffing — reject spoofed extensions.
-	sniffedType := helper.DetectMediaTypeFromBytes(fileData)
-	if sniffedType != mediaType {
-		sniffedMax := getMaxFileSize(sniffedType)
-		if len(fileData) > sniffedMax {
-			return ErrorResponse(c, 400, "File too large for detected media type", "FILE_TOO_LARGE",
-				fmt.Sprintf("Detected: %s, Max: %d bytes, Got: %d", sniffedType, sniffedMax, len(fileData)))
-		}
-		mediaType = sniffedType
-	}
-
-	var whatsmeowMediaType whatsmeow.MediaType
-	switch mediaType {
-	case "image":
-		whatsmeowMediaType = whatsmeow.MediaImage
-	case "video":
-		whatsmeowMediaType = whatsmeow.MediaVideo
-	case "audio":
-		whatsmeowMediaType = whatsmeow.MediaAudio
-	default:
-		whatsmeowMediaType = whatsmeow.MediaDocument
-	}
-
-	uploaded, err := session.Client.Upload(context.Background(), fileData, whatsmeowMediaType)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to upload media", "UPLOAD_FAILED", err.Error())
-	}
-
-	// Typing delay simulation
-	messageLength := len(caption)
-	helper.ApplyTypingDelay(session.Client, groupJID, messageLength)
-
-	msg := helper.CreateMediaMessage(uploaded, caption, file.Filename, mediaType)
-
-	resp, err := session.Client.SendMessage(context.Background(), groupJID, msg)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to send media", "SEND_FAILED", err.Error())
+	resp, errResp := uploadAndSendMedia(c, session, groupJID, fileData, mediaType, filename, caption)
+	if errResp != nil {
+		return errResp
 	}
 
 	return SuccessResponse(c, 200, "Media sent to group", map[string]any{
@@ -524,7 +262,49 @@ func SendGroupMediaByNumber(c echo.Context) error {
 		"timestamp": resp.Timestamp.Unix(),
 		"groupJid":  groupJid,
 		"mediaType": mediaType,
-		"fileName":  file.Filename,
+		"fileName":  filename,
+		"fileSize":  len(fileData),
+	})
+}
+
+// POST /send-group/:instanceId/media-url - Send media from URL to group
+func SendGroupMediaURL(c echo.Context) error {
+	instanceID := c.Param("instanceId")
+
+	var req sendGroupMediaRequest
+	if err := c.Bind(&req); err != nil {
+		return ErrorResponse(c, 400, "Invalid request body", "INVALID_REQUEST", err.Error())
+	}
+	if req.GroupJID == "" || req.MediaURL == "" {
+		return ErrorResponse(c, 400, "Fields 'groupJid' and 'mediaUrl' are required", "VALIDATION_ERROR", "")
+	}
+
+	session, errResp := requireConnectedSession(c, instanceID)
+	if errResp != nil {
+		return errResp
+	}
+
+	groupJID, errResp := parseGroupJID(c, req.GroupJID)
+	if errResp != nil {
+		return errResp
+	}
+
+	fileData, mediaType, filename, errResp := downloadRemoteMedia(c, req.MediaURL, req.MediaType)
+	if errResp != nil {
+		return errResp
+	}
+
+	resp, errResp := uploadAndSendMedia(c, session, groupJID, fileData, mediaType, filename, req.Caption)
+	if errResp != nil {
+		return errResp
+	}
+
+	return SuccessResponse(c, 200, "Media sent to group", map[string]any{
+		"messageId": resp.ID,
+		"timestamp": resp.Timestamp.Unix(),
+		"groupJid":  req.GroupJID,
+		"mediaType": mediaType,
+		"fileName":  filename,
 		"fileSize":  len(fileData),
 	})
 }
@@ -533,95 +313,37 @@ func SendGroupMediaByNumber(c echo.Context) error {
 func SendGroupMediaURLByNumber(c echo.Context) error {
 	phoneNumber := c.Param("phoneNumber")
 
-	var req struct {
-		GroupJID  string `json:"groupJid" validate:"required"`
-		MediaURL  string `json:"mediaUrl" validate:"required"`
-		Caption   string `json:"caption"`
-		MediaType string `json:"mediaType"`
-	}
-
+	var req sendGroupMediaRequest
 	if err := c.Bind(&req); err != nil {
 		return ErrorResponse(c, 400, "Invalid request body", "INVALID_REQUEST", err.Error())
 	}
-
 	if req.GroupJID == "" || req.MediaURL == "" {
 		return ErrorResponse(c, 400, "Fields 'groupJid' and 'mediaUrl' are required", "VALIDATION_ERROR", "")
 	}
 
-	// 1. Find active instance by sender number
-	inst, err := model.GetActiveInstanceByPhoneNumber(phoneNumber)
-	if err != nil {
-		if errors.Is(err, model.ErrNoActiveInstance) {
-			return ErrorResponse(c, 404, "No active instance for this phone number", "NO_ACTIVE_INSTANCE", "Please login / scan QR for this number")
-		}
-		return ErrorResponse(c, 500, "Failed to get instance for this phone number", "DB_ERROR", err.Error())
+	inst, errResp := resolveSenderInstance(c, phoneNumber)
+	if errResp != nil {
+		return errResp
 	}
 
-	// Permission Check
-	userClaims, _ := c.Get("user_claims").(*service.Claims)
-	if userClaims != nil && userClaims.Role != "admin" {
-		_, err := model.CheckUserInstancePermission(userClaims.UserID, inst.InstanceID)
-		if err != nil {
-			return ErrorResponse(c, 403, "Insufficient permission to use this phone number", "FORBIDDEN", "")
-		}
-	}
-
-	// 2. Get session from memory by instance_id
 	session, errResp := requireConnectedSession(c, inst.InstanceID)
 	if errResp != nil {
 		return errResp
 	}
 
-	groupJID, err := types.ParseJID(req.GroupJID)
-	if err != nil {
-		return ErrorResponse(c, 400, "Invalid group JID", "INVALID_GROUP_JID", err.Error())
+	groupJID, errResp := parseGroupJID(c, req.GroupJID)
+	if errResp != nil {
+		return errResp
 	}
 
-	if groupJID.Server != types.GroupServer {
-		return ErrorResponse(c, 400, "Not a group JID", "NOT_GROUP_JID", "Group JID must end with @g.us")
+	fileData, mediaType, filename, errResp := downloadRemoteMedia(c, req.MediaURL, req.MediaType)
+	if errResp != nil {
+		return errResp
 	}
 
-	fileData, filename, err := helper.DownloadFile(req.MediaURL)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to download file", "DOWNLOAD_FAILED", err.Error())
-	}
-
-	mediaType := req.MediaType
-	if mediaType == "" {
-		mediaType = helper.DetectMediaType(filename)
-	}
-
-	maxSize := getMaxFileSize(mediaType)
-	if len(fileData) > maxSize {
-		return ErrorResponse(c, 400, "File too large", "FILE_TOO_LARGE", fmt.Sprintf("File: %d bytes, Max: %d bytes", len(fileData), maxSize))
-	}
-
-	var whatsmeowMediaType whatsmeow.MediaType
-	switch mediaType {
-	case "image":
-		whatsmeowMediaType = whatsmeow.MediaImage
-	case "video":
-		whatsmeowMediaType = whatsmeow.MediaVideo
-	case "audio":
-		whatsmeowMediaType = whatsmeow.MediaAudio
-	default:
-		whatsmeowMediaType = whatsmeow.MediaDocument
-	}
-
-	uploaded, err := session.Client.Upload(context.Background(), fileData, whatsmeowMediaType)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to upload media", "UPLOAD_FAILED", err.Error())
-	}
-
-	// Typing delay simulation
-	messageLength := len(req.Caption)
-	helper.ApplyTypingDelay(session.Client, groupJID, messageLength)
-
-	msg := helper.CreateMediaMessage(uploaded, req.Caption, filename, mediaType)
-
-	resp, err := session.Client.SendMessage(context.Background(), groupJID, msg)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to send media", "SEND_FAILED", err.Error())
+	resp, errResp := uploadAndSendMedia(c, session, groupJID, fileData, mediaType, filename, req.Caption)
+	if errResp != nil {
+		return errResp
 	}
 
 	return SuccessResponse(c, 200, "Media sent to group", map[string]any{

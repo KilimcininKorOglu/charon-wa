@@ -2,15 +2,14 @@ package handler
 
 import (
 	"context"
-	"errors"
 
 	"charon/internal/helper"
-	"charon/internal/service"
-
 	"charon/internal/model"
 
 	"github.com/labstack/echo/v4"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/types"
 )
 
 // Request body for sending a message
@@ -37,34 +36,14 @@ func SendMessage(c echo.Context) error {
 		return errResp
 	}
 
-	recipient, err := helper.FormatPhoneNumber(req.To)
-	if err != nil {
-		return ErrorResponse(c, 400, "Invalid phone number", "INVALID_PHONE", err.Error())
+	recipient, errResp := resolveRecipient(c, session, req.To)
+	if errResp != nil {
+		return errResp
 	}
 
-	if !helper.ShouldSkipValidation(req.To) {
-		isRegistered, err := session.Client.IsOnWhatsApp(context.Background(), []string{recipient.User})
-		if err != nil {
-			return ErrorResponse(c, 500, "Failed to verify phone number", "VERIFICATION_FAILED", err.Error())
-		}
-
-		if len(isRegistered) == 0 || !isRegistered[0].IsIn {
-			return ErrorResponse(c, 400, "Phone number is not registered on WhatsApp", "PHONE_NOT_REGISTERED",
-				"Please check the number or ask recipient to install WhatsApp")
-		}
-	}
-
-	// Typing delay simulation
-	messageLength := len(req.Message)
-	helper.ApplyTypingDelay(session.Client, recipient, messageLength)
-
-	msg := &waE2E.Message{
-		Conversation: &req.Message,
-	}
-
-	resp, err := session.Client.SendMessage(context.Background(), recipient, msg)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to send message", "SEND_FAILED", err.Error())
+	resp, errResp := sendTextMessage(c, session, recipient, req.Message)
+	if errResp != nil {
+		return errResp
 	}
 
 	return SuccessResponse(c, 200, "Message sent successfully", map[string]any{
@@ -73,6 +52,19 @@ func SendMessage(c echo.Context) error {
 		"to":        req.To,
 		"verified":  true,
 	})
+}
+
+// sendTextMessage applies the typing delay and sends a plain text message. The
+// second result is a written ErrorResponse for the caller to propagate.
+func sendTextMessage(c echo.Context, session *model.Session, recipient types.JID, text string) (*whatsmeow.SendResponse, error) {
+	helper.ApplyTypingDelay(session.Client, recipient, len(text))
+
+	msg := &waE2E.Message{Conversation: &text}
+	resp, err := session.Client.SendMessage(context.Background(), recipient, msg)
+	if err != nil {
+		return nil, ErrorResponse(c, 500, "Failed to send message", "SEND_FAILED", err.Error())
+	}
+	return &resp, nil
 }
 
 // POST /send/by-number/:phoneNumber
@@ -88,71 +80,24 @@ func SendMessageByNumber(c echo.Context) error {
 		return ErrorResponse(c, 400, "Field 'to' and 'message' are required", "VALIDATION_ERROR", "")
 	}
 
-	// Find active instance by sender number (phoneNumber)
-	inst, err := model.GetActiveInstanceByPhoneNumber(phoneNumber)
-	if err != nil {
-		if errors.Is(err, model.ErrNoActiveInstance) {
-			return ErrorResponse(c, 404,
-				"No active instance for this phone number",
-				"NO_ACTIVE_INSTANCE",
-				"Please login / scan QR for this number",
-			)
-		}
-		return ErrorResponse(c, 500,
-			"Failed to get instance for this phone number",
-			"DB_ERROR",
-			err.Error(),
-		)
+	inst, errResp := resolveSenderInstance(c, phoneNumber)
+	if errResp != nil {
+		return errResp
 	}
 
-	// 1.5) Check Permission
-	userClaims, _ := c.Get("user_claims").(*service.Claims)
-	if userClaims != nil && userClaims.Role != "admin" {
-		_, err := model.CheckUserInstancePermission(userClaims.UserID, inst.InstanceID)
-		if err != nil {
-			return ErrorResponse(c, 403, "Insufficient permission to use this phone number", "FORBIDDEN", "")
-		}
+	session, errResp := requireConnectedSession(c, inst.InstanceID)
+	if errResp != nil {
+		return errResp
 	}
 
-	// 2) Get session from memory by instance_id
-	session, err := service.GetSession(inst.InstanceID)
-	if err != nil {
-		return ErrorResponse(c, 404, "Session not found", "SESSION_NOT_FOUND", "Please login / reconnect first")
+	recipient, errResp := resolveRecipient(c, session, req.To)
+	if errResp != nil {
+		return errResp
 	}
 
-	// 3) Validate connection same as legacy function
-	if !session.IsConnected || !session.Client.IsConnected() || session.Client.Store.ID == nil {
-		return ErrorResponse(c, 400, "WhatsApp session is not connected", "NOT_CONNECTED", "Please scan QR or reconnect")
-	}
-
-	// 4) Format recipient & check registration
-	recipient, err := helper.FormatPhoneNumber(req.To)
-	if err != nil {
-		return ErrorResponse(c, 400, "Invalid phone number", "INVALID_PHONE", err.Error())
-	}
-
-	if !helper.ShouldSkipValidation(req.To) {
-		isRegistered, err := session.Client.IsOnWhatsApp(context.Background(), []string{recipient.User})
-		if err != nil {
-			return ErrorResponse(c, 500, "Failed to verify phone number", "VERIFICATION_FAILED", err.Error())
-		}
-		if len(isRegistered) == 0 || !isRegistered[0].IsIn {
-			return ErrorResponse(c, 400, "Phone number is not registered on WhatsApp", "PHONE_NOT_REGISTERED",
-				"Please check the number or ask recipient to install WhatsApp")
-		}
-	}
-
-	// Typing delay simulation
-	messageLength := len(req.Message)
-	helper.ApplyTypingDelay(session.Client, recipient, messageLength)
-
-	// 5) Send message
-	msg := &waE2E.Message{
-		Conversation: &req.Message,
-	}
-	resp, err := session.Client.SendMessage(context.Background(), recipient, msg)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to send message", "SEND_FAILED", err.Error())
+	resp, errResp := sendTextMessage(c, session, recipient, req.Message)
+	if errResp != nil {
+		return errResp
 	}
 
 	return SuccessResponse(c, 200, "Message sent successfully", map[string]any{

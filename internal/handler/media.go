@@ -2,18 +2,13 @@ package handler
 
 import (
 	"bytes"
-	"context"
-	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
 
 	"charon/internal/helper"
-	"charon/internal/model"
-	"charon/internal/service"
 
 	"github.com/labstack/echo/v4"
-	"go.mau.fi/whatsmeow"
 )
 
 // Request body for sending media from URL
@@ -36,98 +31,32 @@ func SendMediaFile(c echo.Context) error {
 		return ErrorResponse(c, 400, "Field 'to' is required", "VALIDATION_ERROR", "")
 	}
 
-	// 1. CHECK SESSION EXISTS
 	session, errResp := requireConnectedSession(c, instanceID)
 	if errResp != nil {
 		return errResp
 	}
 
-	// 5. FORMAT & VALIDATE PHONE NUMBER
-	recipient, err := helper.FormatPhoneNumber(to)
-	if err != nil {
-		return ErrorResponse(c, 400, "Invalid phone number", "INVALID_PHONE", err.Error())
+	recipient, errResp := resolveRecipient(c, session, to)
+	if errResp != nil {
+		return errResp
 	}
 
-	if !helper.ShouldSkipValidation(to) {
-		isRegistered, err := session.Client.IsOnWhatsApp(context.Background(), []string{recipient.User})
-		if err != nil {
-			return ErrorResponse(c, 500, "Failed to verify phone number", "VERIFICATION_FAILED", err.Error())
-		}
-
-		if len(isRegistered) == 0 || !isRegistered[0].IsIn {
-			return ErrorResponse(c, 400, "Phone number is not registered on WhatsApp", "PHONE_NOT_REGISTERED",
-				"Please check the number or ask recipient to install WhatsApp")
-		}
+	fileData, mediaType, filename, errResp := readUploadedMedia(c)
+	if errResp != nil {
+		return errResp
 	}
 
-	// 7. GET & VALIDATE FILE
-	file, err := c.FormFile("file")
-	if err != nil {
-		return ErrorResponse(c, 400, "File is required", "FILE_REQUIRED", err.Error())
+	resp, errResp := uploadAndSendMedia(c, session, recipient, fileData, mediaType, filename, caption)
+	if errResp != nil {
+		return errResp
 	}
 
-	// 8. DETECT MEDIA TYPE (from filename; re-verified against content below)
-	mediaType := helper.DetectMediaType(file.Filename)
-
-	// 9. READ FILE WITH SIZE LIMIT (pre-check + streaming cap)
-	maxSize := getMaxFileSize(mediaType)
-	fileData, err := readMultipartUpload(file, maxSize)
-	if err != nil {
-		return ErrorResponse(c, 400, "File too large or unreadable", "FILE_TOO_LARGE",
-			fmt.Sprintf("Type: %s, Max: %d bytes, Error: %v", mediaType, maxSize, err))
-	}
-
-	// 9b. VERIFY CONTENT TYPE by magic-byte sniffing — reject spoofed extensions.
-	sniffedType := helper.DetectMediaTypeFromBytes(fileData)
-	if sniffedType != mediaType {
-		sniffedMax := getMaxFileSize(sniffedType)
-		if len(fileData) > sniffedMax {
-			return ErrorResponse(c, 400, "File too large for detected media type", "FILE_TOO_LARGE",
-				fmt.Sprintf("Detected: %s, Max: %d bytes, Got: %d", sniffedType, sniffedMax, len(fileData)))
-		}
-		mediaType = sniffedType
-	}
-
-	// 10. CONVERT MEDIA TYPE
-	var whatsmeowMediaType whatsmeow.MediaType
-	switch mediaType {
-	case "image":
-		whatsmeowMediaType = whatsmeow.MediaImage
-	case "video":
-		whatsmeowMediaType = whatsmeow.MediaVideo
-	case "audio":
-		whatsmeowMediaType = whatsmeow.MediaAudio
-	default:
-		whatsmeowMediaType = whatsmeow.MediaDocument
-	}
-
-	// 11. UPLOAD TO WHATSAPP
-	uploaded, err := session.Client.Upload(context.Background(), fileData, whatsmeowMediaType)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to upload media", "UPLOAD_FAILED",
-			fmt.Sprintf("Type: %s, Size: %d bytes, Error: %v", mediaType, len(fileData), err))
-	}
-
-	// Typing delay simulation
-	messageLength := len(caption)
-	helper.ApplyTypingDelay(session.Client, recipient, messageLength)
-
-	// 12. CREATE MESSAGE
-	msg := helper.CreateMediaMessage(uploaded, caption, file.Filename, mediaType)
-
-	// 13. SEND MESSAGE
-	resp, err := session.Client.SendMessage(context.Background(), recipient, msg)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to send media", "SEND_FAILED", err.Error())
-	}
-
-	// 14. SUCCESS RESPONSE
 	return SuccessResponse(c, 200, "Media sent successfully", map[string]any{
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"to":        to,
 		"mediaType": mediaType,
-		"fileName":  file.Filename,
+		"fileName":  filename,
 		"fileSize":  len(fileData),
 		"verified":  true,
 	})
@@ -147,87 +76,26 @@ func SendMediaURL(c echo.Context) error {
 		return ErrorResponse(c, 400, "Fields 'to' and 'mediaUrl' are required", "VALIDATION_ERROR", "")
 	}
 
-	// 1. CHECK SESSION EXISTS
 	session, errResp := requireConnectedSession(c, instanceID)
 	if errResp != nil {
 		return errResp
 	}
 
-	// 5. FORMAT & VALIDATE PHONE NUMBER
-	recipient, err := helper.FormatPhoneNumber(req.To)
-	if err != nil {
-		return ErrorResponse(c, 400, "Invalid phone number", "INVALID_PHONE", err.Error())
+	recipient, errResp := resolveRecipient(c, session, req.To)
+	if errResp != nil {
+		return errResp
 	}
 
-	if !helper.ShouldSkipValidation(req.To) {
-		isRegistered, err := session.Client.IsOnWhatsApp(context.Background(), []string{recipient.User})
-		if err != nil {
-			return ErrorResponse(c, 500, "Failed to verify phone number", "VERIFICATION_FAILED", err.Error())
-		}
-
-		if len(isRegistered) == 0 || !isRegistered[0].IsIn {
-			return ErrorResponse(c, 400, "Phone number is not registered on WhatsApp", "PHONE_NOT_REGISTERED",
-				"Please check the number or ask recipient to install WhatsApp")
-		}
+	fileData, mediaType, filename, errResp := downloadRemoteMedia(c, req.MediaURL, req.MediaType)
+	if errResp != nil {
+		return errResp
 	}
 
-	// 7. DOWNLOAD FILE FROM URL
-	fmt.Printf("Downloading from: %s\n", req.MediaURL)
-	fileData, filename, err := helper.DownloadFile(req.MediaURL)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to download file", "DOWNLOAD_FAILED", err.Error())
-	}
-	fmt.Printf("Downloaded: %s (%d bytes)\n", filename, len(fileData))
-
-	// 8. DETECT MEDIA TYPE
-	mediaType := req.MediaType
-	if mediaType == "" {
-		mediaType = helper.DetectMediaType(filename)
-	}
-	fmt.Printf("Detected media type: %s\n", mediaType)
-
-	// 9. VALIDATE FILE SIZE
-	maxSize := getMaxFileSize(mediaType)
-	if len(fileData) > maxSize {
-		return ErrorResponse(c, 400, "File too large", "FILE_TOO_LARGE",
-			fmt.Sprintf("File size: %d bytes, Max allowed: %d bytes (%s)", len(fileData), maxSize, mediaType))
+	resp, errResp := uploadAndSendMedia(c, session, recipient, fileData, mediaType, filename, req.Caption)
+	if errResp != nil {
+		return errResp
 	}
 
-	// 10. CONVERT MEDIA TYPE
-	var whatsmeowMediaType whatsmeow.MediaType
-	switch mediaType {
-	case "image":
-		whatsmeowMediaType = whatsmeow.MediaImage
-	case "video":
-		whatsmeowMediaType = whatsmeow.MediaVideo
-	case "audio":
-		whatsmeowMediaType = whatsmeow.MediaAudio
-	default:
-		whatsmeowMediaType = whatsmeow.MediaDocument
-	}
-
-	// 11. UPLOAD TO WHATSAPP
-	fmt.Printf("Uploading to WhatsApp as: %s\n", whatsmeowMediaType)
-	uploaded, err := session.Client.Upload(context.Background(), fileData, whatsmeowMediaType)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to upload media to WhatsApp", "UPLOAD_FAILED",
-			fmt.Sprintf("File: %s, Size: %d bytes, Type: %s, Error: %v", filename, len(fileData), mediaType, err))
-	}
-
-	// Typing delay simulation
-	messageLength := len(req.Caption)
-	helper.ApplyTypingDelay(session.Client, recipient, messageLength)
-
-	// 12. CREATE MESSAGE
-	msg := helper.CreateMediaMessage(uploaded, req.Caption, filename, mediaType)
-
-	// 13. SEND MESSAGE
-	resp, err := session.Client.SendMessage(context.Background(), recipient, msg)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to send media", "SEND_FAILED", err.Error())
-	}
-
-	// 14. SUCCESS RESPONSE
 	return SuccessResponse(c, 200, "Media sent successfully", map[string]any{
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
@@ -253,21 +121,9 @@ func SendMediaURLByNumber(c echo.Context) error {
 		return ErrorResponse(c, 400, "Fields 'to' and 'mediaUrl' are required", "VALIDATION_ERROR", "")
 	}
 
-	inst, err := model.GetActiveInstanceByPhoneNumber(phoneNumber)
-	if err != nil {
-		if errors.Is(err, model.ErrNoActiveInstance) {
-			return ErrorResponse(c, 404, "No active instance for this phone number", "NO_ACTIVE_INSTANCE", "Please login / scan QR for this number")
-		}
-		return ErrorResponse(c, 500, "Failed to get instance for this phone number", "DB_ERROR", err.Error())
-	}
-
-	// 1.5) Check Permission
-	userClaims, _ := c.Get("user_claims").(*service.Claims)
-	if userClaims != nil && userClaims.Role != "admin" {
-		_, err := model.CheckUserInstancePermission(userClaims.UserID, inst.InstanceID)
-		if err != nil {
-			return ErrorResponse(c, 403, "Insufficient permission to use this phone number", "FORBIDDEN", "")
-		}
+	inst, errResp := resolveSenderInstance(c, phoneNumber)
+	if errResp != nil {
+		return errResp
 	}
 
 	session, errResp := requireConnectedSession(c, inst.InstanceID)
@@ -275,67 +131,19 @@ func SendMediaURLByNumber(c echo.Context) error {
 		return errResp
 	}
 
-	recipient, err := helper.FormatPhoneNumber(req.To)
-	if err != nil {
-		return ErrorResponse(c, 400, "Invalid phone number", "INVALID_PHONE", err.Error())
+	recipient, errResp := resolveRecipient(c, session, req.To)
+	if errResp != nil {
+		return errResp
 	}
 
-	if !helper.ShouldSkipValidation(req.To) {
-		isRegistered, err := session.Client.IsOnWhatsApp(context.Background(), []string{recipient.User})
-		if err != nil {
-			return ErrorResponse(c, 500, "Failed to verify phone number", "VERIFICATION_FAILED", err.Error())
-		}
-
-		if len(isRegistered) == 0 || !isRegistered[0].IsIn {
-			return ErrorResponse(c, 400, "Phone number is not registered on WhatsApp", "PHONE_NOT_REGISTERED", "Please check the number or ask recipient to install WhatsApp")
-		}
+	fileData, mediaType, filename, errResp := downloadRemoteMedia(c, req.MediaURL, req.MediaType)
+	if errResp != nil {
+		return errResp
 	}
 
-	fmt.Printf("Downloading from: %s\n", req.MediaURL)
-	fileData, filename, err := helper.DownloadFile(req.MediaURL)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to download file", "DOWNLOAD_FAILED", err.Error())
-	}
-	fmt.Printf("Downloaded: %s (%d bytes)\n", filename, len(fileData))
-
-	mediaType := req.MediaType
-	if mediaType == "" {
-		mediaType = helper.DetectMediaType(filename)
-	}
-	fmt.Printf("Detected media type: %s\n", mediaType)
-
-	maxSize := getMaxFileSize(mediaType)
-	if len(fileData) > maxSize {
-		return ErrorResponse(c, 400, "File too large", "FILE_TOO_LARGE", fmt.Sprintf("File size: %d bytes, Max allowed: %d bytes (%s)", len(fileData), maxSize, mediaType))
-	}
-
-	var whatsmeowMediaType whatsmeow.MediaType
-	switch mediaType {
-	case "image":
-		whatsmeowMediaType = whatsmeow.MediaImage
-	case "video":
-		whatsmeowMediaType = whatsmeow.MediaVideo
-	case "audio":
-		whatsmeowMediaType = whatsmeow.MediaAudio
-	default:
-		whatsmeowMediaType = whatsmeow.MediaDocument
-	}
-
-	fmt.Printf("Uploading to WhatsApp as: %s\n", whatsmeowMediaType)
-	uploaded, err := session.Client.Upload(context.Background(), fileData, whatsmeowMediaType)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to upload media to WhatsApp", "UPLOAD_FAILED", fmt.Sprintf("File: %s, Size: %d bytes, Type: %s, Error: %v", filename, len(fileData), mediaType, err))
-	}
-
-	// Typing delay simulation
-	messageLength := len(req.Caption)
-	helper.ApplyTypingDelay(session.Client, recipient, messageLength)
-
-	msg := helper.CreateMediaMessage(uploaded, req.Caption, filename, mediaType)
-
-	resp, err := session.Client.SendMessage(context.Background(), recipient, msg)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to send media", "SEND_FAILED", err.Error())
+	resp, errResp := uploadAndSendMedia(c, session, recipient, fileData, mediaType, filename, req.Caption)
+	if errResp != nil {
+		return errResp
 	}
 
 	return SuccessResponse(c, 200, "Media sent successfully", map[string]any{
@@ -362,115 +170,38 @@ func SendMediaFileByNumber(c echo.Context) error {
 		return ErrorResponse(c, 400, "Field 'to' is required", "VALIDATION_ERROR", "")
 	}
 
-	// 1. Find active instance by sender number
-	inst, err := model.GetActiveInstanceByPhoneNumber(phoneNumber)
-	if err != nil {
-		if errors.Is(err, model.ErrNoActiveInstance) {
-			return ErrorResponse(c, 404, "No active instance for this phone number", "NO_ACTIVE_INSTANCE", "Please login / scan QR for this number")
-		}
-		return ErrorResponse(c, 500, "Failed to get instance for this phone number", "DB_ERROR", err.Error())
+	inst, errResp := resolveSenderInstance(c, phoneNumber)
+	if errResp != nil {
+		return errResp
 	}
 
-	// 1.5) Check Permission
-	userClaims, _ := c.Get("user_claims").(*service.Claims)
-	if userClaims != nil && userClaims.Role != "admin" {
-		_, err := model.CheckUserInstancePermission(userClaims.UserID, inst.InstanceID)
-		if err != nil {
-			return ErrorResponse(c, 403, "Insufficient permission to use this phone number", "FORBIDDEN", "")
-		}
-	}
-
-	// 2. Get session from memory by instance_id
 	session, errResp := requireConnectedSession(c, inst.InstanceID)
 	if errResp != nil {
 		return errResp
 	}
 
-	// 6. FORMAT & VALIDATE DESTINATION PHONE NUMBER
-	recipient, err := helper.FormatPhoneNumber(to)
-	if err != nil {
-		return ErrorResponse(c, 400, "Invalid phone number", "INVALID_PHONE", err.Error())
+	recipient, errResp := resolveRecipient(c, session, to)
+	if errResp != nil {
+		return errResp
 	}
 
-	if !helper.ShouldSkipValidation(to) {
-		isRegistered, err := session.Client.IsOnWhatsApp(context.Background(), []string{recipient.User})
-		if err != nil {
-			return ErrorResponse(c, 500, "Failed to verify phone number", "VERIFICATION_FAILED", err.Error())
-		}
-
-		if len(isRegistered) == 0 || !isRegistered[0].IsIn {
-			return ErrorResponse(c, 400, "Phone number is not registered on WhatsApp", "PHONE_NOT_REGISTERED", "Please check the number or ask recipient to install WhatsApp")
-		}
+	fileData, mediaType, filename, errResp := readUploadedMedia(c)
+	if errResp != nil {
+		return errResp
 	}
 
-	// 8. GET & VALIDATE FILE
-	file, err := c.FormFile("file")
-	if err != nil {
-		return ErrorResponse(c, 400, "File is required", "FILE_REQUIRED", err.Error())
+	resp, errResp := uploadAndSendMedia(c, session, recipient, fileData, mediaType, filename, caption)
+	if errResp != nil {
+		return errResp
 	}
 
-	// 9. DETECT MEDIA TYPE (from filename; re-verified against content below)
-	mediaType := helper.DetectMediaType(file.Filename)
-
-	// 10. READ FILE WITH SIZE LIMIT (pre-check + streaming cap)
-	maxSize := getMaxFileSize(mediaType)
-	fileData, err := readMultipartUpload(file, maxSize)
-	if err != nil {
-		return ErrorResponse(c, 400, "File too large or unreadable", "FILE_TOO_LARGE",
-			fmt.Sprintf("Type: %s, Max: %d bytes, Error: %v", mediaType, maxSize, err))
-	}
-
-	// 10b. VERIFY CONTENT TYPE by magic-byte sniffing — reject spoofed extensions.
-	sniffedType := helper.DetectMediaTypeFromBytes(fileData)
-	if sniffedType != mediaType {
-		sniffedMax := getMaxFileSize(sniffedType)
-		if len(fileData) > sniffedMax {
-			return ErrorResponse(c, 400, "File too large for detected media type", "FILE_TOO_LARGE",
-				fmt.Sprintf("Detected: %s, Max: %d bytes, Got: %d", sniffedType, sniffedMax, len(fileData)))
-		}
-		mediaType = sniffedType
-	}
-
-	// 11. CONVERT MEDIA TYPE
-	var whatsmeowMediaType whatsmeow.MediaType
-	switch mediaType {
-	case "image":
-		whatsmeowMediaType = whatsmeow.MediaImage
-	case "video":
-		whatsmeowMediaType = whatsmeow.MediaVideo
-	case "audio":
-		whatsmeowMediaType = whatsmeow.MediaAudio
-	default:
-		whatsmeowMediaType = whatsmeow.MediaDocument
-	}
-
-	// 12. UPLOAD TO WHATSAPP
-	uploaded, err := session.Client.Upload(context.Background(), fileData, whatsmeowMediaType)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to upload media", "UPLOAD_FAILED", fmt.Sprintf("Type: %s, Size: %d bytes, Error: %v", mediaType, len(fileData), err))
-	}
-
-	// Typing delay simulation
-	messageLength := len(caption)
-	helper.ApplyTypingDelay(session.Client, recipient, messageLength)
-
-	// 13. CREATE MESSAGE
-	msg := helper.CreateMediaMessage(uploaded, caption, file.Filename, mediaType)
-
-	// 14. SEND MESSAGE
-	resp, err := session.Client.SendMessage(context.Background(), recipient, msg)
-	if err != nil {
-		return ErrorResponse(c, 500, "Failed to send media", "SEND_FAILED", err.Error())
-	}
-
-	// 15. SUCCESS RESPONSE
 	return SuccessResponse(c, 200, "Media sent successfully", map[string]any{
 		"from":      phoneNumber,
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"to":        to,
 		"mediaType": mediaType,
-		"fileName":  file.Filename,
+		"fileName":  filename,
 		"fileSize":  len(fileData),
 		"verified":  true,
 	})
