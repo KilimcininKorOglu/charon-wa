@@ -468,70 +468,34 @@ func DeleteInstanceByInstanceID(instanceID string) error {
 	return err
 }
 
+// ToResponse converts the internal row into its JSON form. Every Null* field
+// carries the type's zero value when the column is NULL, so each one is copied
+// unconditionally.
 func ToResponse(inst Instance) InstanceResp {
-	resp := InstanceResp{
+	return InstanceResp{
 		ID:              inst.ID,
 		InstanceID:      inst.InstanceID,
 		JID:             inst.JID.String,
 		Status:          inst.Status,
 		IsConnected:     inst.IsConnected,
-		BatteryLevel:    0,
-		BatteryCharging: false,
 		Circle:          inst.Circle,
+		PhoneNumber:     inst.PhoneNumber.String,
+		Name:            inst.Name.String,
+		ProfilePicture:  inst.ProfilePicture.String,
+		About:           inst.About.String,
+		Platform:        inst.Platform.String,
+		BatteryLevel:    inst.BatteryLevel.Int64,
+		BatteryCharging: inst.BatteryCharging.Bool,
+		QRCode:          inst.QRCode.String,
+		QRExpiresAt:     inst.QRExpiresAt.Time,
+		CreatedAt:       inst.CreatedAt,
+		ConnectedAt:     inst.ConnectedAt.Time,
+		DisconnectedAt:  inst.DisconnectedAt.Time,
+		LastSeen:        inst.LastSeen.Time,
+		Description:     inst.Description.String,
+		Used:            inst.Used,
+		CreatedBy:       inst.CreatedBy.Int64,
 	}
-
-	if inst.PhoneNumber.Valid {
-		resp.PhoneNumber = inst.PhoneNumber.String
-	}
-	if inst.Name.Valid {
-		resp.Name = inst.Name.String
-	}
-	if inst.ProfilePicture.Valid {
-		resp.ProfilePicture = inst.ProfilePicture.String
-	}
-	if inst.About.Valid {
-		resp.About = inst.About.String
-	}
-	if inst.Platform.Valid {
-		resp.Platform = inst.Platform.String
-	}
-	if inst.BatteryLevel.Valid {
-		resp.BatteryLevel = inst.BatteryLevel.Int64
-	}
-	if inst.BatteryCharging.Valid {
-		resp.BatteryCharging = inst.BatteryCharging.Bool
-	}
-	if inst.QRCode.Valid {
-		resp.QRCode = inst.QRCode.String
-	}
-	if inst.QRExpiresAt.Valid {
-		resp.QRExpiresAt = inst.QRExpiresAt.Time
-	}
-	resp.CreatedAt = inst.CreatedAt
-	if inst.ConnectedAt.Valid {
-		resp.ConnectedAt = inst.ConnectedAt.Time
-	}
-	if inst.DisconnectedAt.Valid {
-		resp.DisconnectedAt = inst.DisconnectedAt.Time
-	}
-	if inst.LastSeen.Valid {
-		resp.LastSeen = inst.LastSeen.Time
-	}
-
-	if inst.Description.Valid {
-		resp.Description = inst.Description.String
-	}
-
-	resp.Used = inst.Used
-	if inst.Description.Valid {
-		resp.Description = inst.Description.String
-	}
-
-	if inst.CreatedBy.Valid {
-		resp.CreatedBy = inst.CreatedBy.Int64
-	}
-
-	return resp
 }
 
 // UpdateInstanceFieldsRequest for PATCH /instances/:instanceId
