@@ -43,6 +43,9 @@ services:
     command: ["./worker"]
     environment:
       OUTBOX_API_BASEURL: http://api:2121
+      # Must match the api service: the worker normalises destinations itself.
+      PHONE_DEFAULT_REGION: ${PHONE_DEFAULT_REGION:-}
+      SKIP_WHATSAPP_REGISTRATION_CHECK: ${SKIP_WHATSAPP_REGISTRATION_CHECK:-false}
     depends_on:
       db-init:
         condition: service_completed_successfully

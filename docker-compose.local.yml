@@ -39,12 +39,12 @@ services:
       PORT: "2121"
       BASEURL: "0.0.0.0"
       CORS_ALLOW_ORIGINS: "http://localhost:8321,http://localhost:8320"
-      PHONE_COUNTRY_CODE: "90"
+      PHONE_DEFAULT_REGION: "TR"
       CHARON_ENABLE_WEBSOCKET_INCOMING_MSG: "false"
       CHARON_ENABLE_WEBHOOK: "false"
       CHARON_TYPING_DELAY_MIN: "1"
       CHARON_TYPING_DELAY_MAX: "3"
-      ALLOW_9_DIGIT_PHONE_NUMBER: "false"
+      SKIP_WHATSAPP_REGISTRATION_CHECK: "false"
       COOKIE_SECURE: "false"
       SESSION_EXPIRY: 168h
       RATE_LIMIT_PER_SECOND: "10"
@@ -93,6 +93,9 @@ services:
       - .env.docker
     environment:
       OUTBOX_API_BASEURL: http://api:2121
+      # Must match the api service: the worker normalises destinations itself.
+      PHONE_DEFAULT_REGION: "TR"
+      SKIP_WHATSAPP_REGISTRATION_CHECK: "false"
     volumes:
       - ./bin:/app/bin:ro
     depends_on:

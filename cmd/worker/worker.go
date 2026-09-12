@@ -144,25 +144,6 @@ func (w *WorkerInstance) normalizeGroupDestination(destination string) string {
 	return normalized
 }
 
-// normalizePhoneDestination strips every non-digit, rewrites a leading 0 to the
-// 62 country code, and reports whether the result is usable.
-func normalizePhoneDestination(destination string) (string, bool) {
-	cleaned := strings.Map(func(r rune) rune {
-		if r >= '0' && r <= '9' {
-			return r
-		}
-		return -1
-	}, destination)
-
-	if strings.HasPrefix(cleaned, "0") {
-		cleaned = "62" + cleaned[1:]
-	}
-	if !strings.HasPrefix(cleaned, "62") || len(cleaned) < 10 {
-		return "", false
-	}
-	return cleaned, true
-}
-
 // resolveDestination normalizes the message destination for the worker's
 // message type. It marks the message failed and returns false when the
 // destination is unusable.
@@ -171,9 +152,9 @@ func (w *WorkerInstance) resolveDestination(msg *OutboxMessage) (string, bool) {
 		return w.normalizeGroupDestination(msg.Destination), true
 	}
 
-	cleaned, ok := normalizePhoneDestination(msg.Destination)
-	if !ok {
-		w.logf("Invalid phone number format: %s", helper.SanitizeLogValue(msg.Destination))
+	cleaned, err := helper.NormalizePhone(msg.Destination)
+	if err != nil {
+		w.logf("Invalid phone number format: %s (%v)", helper.SanitizeLogValue(msg.Destination), err)
 		if err := UpdateOutboxFailed(w.ctx, msg.ID, "Invalid phone number format"); err != nil {
 			w.logf("CRITICAL: Failed to update status to failed for ID %d: %v", msg.ID, err)
 		}
