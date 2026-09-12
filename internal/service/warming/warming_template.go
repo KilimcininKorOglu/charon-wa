@@ -16,54 +16,71 @@ var (
 	ErrTemplateNotFound         = errors.New("warming template not found")
 )
 
+// validTemplateMessageTypes lists the message types a template line may declare.
+var validTemplateMessageTypes = map[string]bool{
+	"QUESTION":            true,
+	"ANSWER":              true,
+	"ANSWER_AND_QUESTION": true,
+	"STATEMENT":           true,
+	"GREETING":            true,
+}
+
+// validateTemplateLine checks one structure entry. The line number is 1-based
+// so the message matches what the operator sees.
+func validateTemplateLine(lineNumber int, line TemplateLine) error {
+	if line.ActorRole != "ACTOR_A" && line.ActorRole != "ACTOR_B" {
+		return fmt.Errorf("line %d: actorRole must be ACTOR_A or ACTOR_B", lineNumber)
+	}
+	if len(line.MessageOptions) == 0 {
+		return fmt.Errorf("line %d: messageOptions cannot be empty", lineNumber)
+	}
+	if strings.TrimSpace(line.MessageType) == "" {
+		return fmt.Errorf("line %d: messageType is required (QUESTION, ANSWER, ANSWER_AND_QUESTION, or STATEMENT)", lineNumber)
+	}
+	if !validTemplateMessageTypes[line.MessageType] {
+		return fmt.Errorf("line %d: messageType must be QUESTION, ANSWER, ANSWER_AND_QUESTION, STATEMENT, or GREETING", lineNumber)
+	}
+	return nil
+}
+
+// validateTemplatePayload validates the request fields shared by create and
+// update.
+func validateTemplatePayload(category, name string, structure []byte) error {
+	if strings.TrimSpace(category) == "" {
+		return ErrTemplateCategoryRequired
+	}
+	if strings.TrimSpace(name) == "" {
+		return ErrTemplateNameRequired
+	}
+
+	var lines []TemplateLine
+	if err := json.Unmarshal(structure, &lines); err != nil {
+		return ErrTemplateStructureInvalid
+	}
+
+	for i, line := range lines {
+		if err := validateTemplateLine(i+1, line); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// isDuplicateTemplateError reports whether the database rejected the write
+// because the category/name pair already exists.
+func isDuplicateTemplateError(err error) bool {
+	return strings.Contains(err.Error(), "unique_category_name") || strings.Contains(err.Error(), "duplicate")
+}
+
 // CreateWarmingTemplateService creates new template with validation
 func CreateWarmingTemplateService(req *warmingModel.CreateWarmingTemplateRequest, userID int64) (*warmingModel.WarmingTemplate, error) {
-	// Validate category
-	if strings.TrimSpace(req.Category) == "" {
-		return nil, ErrTemplateCategoryRequired
+	if err := validateTemplatePayload(req.Category, req.Name, req.Structure); err != nil {
+		return nil, err
 	}
 
-	// Validate name
-	if strings.TrimSpace(req.Name) == "" {
-		return nil, ErrTemplateNameRequired
-	}
-
-	// Validate structure is valid JSON array
-	var lines []TemplateLine
-	if err := json.Unmarshal(req.Structure, &lines); err != nil {
-		return nil, ErrTemplateStructureInvalid
-	}
-
-	// Validate each line has required fields
-	for i, line := range lines {
-		if line.ActorRole != "ACTOR_A" && line.ActorRole != "ACTOR_B" {
-			return nil, fmt.Errorf("line %d: actorRole must be ACTOR_A or ACTOR_B", i+1)
-		}
-		if len(line.MessageOptions) == 0 {
-			return nil, fmt.Errorf("line %d: messageOptions cannot be empty", i+1)
-		}
-		// Validate messageType is required
-		if strings.TrimSpace(line.MessageType) == "" {
-			return nil, fmt.Errorf("line %d: messageType is required (QUESTION, ANSWER, ANSWER_AND_QUESTION, or STATEMENT)", i+1)
-		}
-		// Validate messageType value
-		validTypes := map[string]bool{
-			"QUESTION":            true,
-			"ANSWER":              true,
-			"ANSWER_AND_QUESTION": true,
-			"STATEMENT":           true,
-			"GREETING":            true,
-		}
-		if !validTypes[line.MessageType] {
-			return nil, fmt.Errorf("line %d: messageType must be QUESTION, ANSWER, ANSWER_AND_QUESTION, STATEMENT, or GREETING", i+1)
-		}
-	}
-
-	// Create in database
 	template, err := warmingModel.CreateWarmingTemplate(req, userID)
 	if err != nil {
-		// Check for unique constraint violation
-		if strings.Contains(err.Error(), "unique_category_name") || strings.Contains(err.Error(), "duplicate") {
+		if isDuplicateTemplateError(err) {
 			return nil, fmt.Errorf("template with category '%s' and name '%s' already exists", req.Category, req.Name)
 		}
 		return nil, fmt.Errorf("service: %w", err)
@@ -105,55 +122,16 @@ func UpdateWarmingTemplateService(id int64, req *warmingModel.UpdateWarmingTempl
 		return errors.New("invalid template ID")
 	}
 
-	// Validate category
-	if strings.TrimSpace(req.Category) == "" {
-		return ErrTemplateCategoryRequired
+	if err := validateTemplatePayload(req.Category, req.Name, req.Structure); err != nil {
+		return err
 	}
 
-	// Validate name
-	if strings.TrimSpace(req.Name) == "" {
-		return ErrTemplateNameRequired
-	}
-
-	// Validate structure is valid JSON array
-	var lines []TemplateLine
-	if err := json.Unmarshal(req.Structure, &lines); err != nil {
-		return ErrTemplateStructureInvalid
-	}
-
-	// Validate each line
-	for i, line := range lines {
-		if line.ActorRole != "ACTOR_A" && line.ActorRole != "ACTOR_B" {
-			return fmt.Errorf("line %d: actorRole must be ACTOR_A or ACTOR_B", i+1)
-		}
-		if len(line.MessageOptions) == 0 {
-			return fmt.Errorf("line %d: messageOptions cannot be empty", i+1)
-		}
-		// Validate messageType is required
-		if strings.TrimSpace(line.MessageType) == "" {
-			return fmt.Errorf("line %d: messageType is required (QUESTION, ANSWER, ANSWER_AND_QUESTION, or STATEMENT)", i+1)
-		}
-		// Validate messageType value
-		validTypes := map[string]bool{
-			"QUESTION":            true,
-			"ANSWER":              true,
-			"ANSWER_AND_QUESTION": true,
-			"STATEMENT":           true,
-			"GREETING":            true,
-		}
-		if !validTypes[line.MessageType] {
-			return fmt.Errorf("line %d: messageType must be QUESTION, ANSWER, ANSWER_AND_QUESTION, STATEMENT, or GREETING", i+1)
-		}
-	}
-
-	// Update in database
 	err := warmingModel.UpdateWarmingTemplate(id, req)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			return ErrTemplateNotFound
 		}
-		// Check for unique constraint violation
-		if strings.Contains(err.Error(), "unique_category_name") || strings.Contains(err.Error(), "duplicate") {
+		if isDuplicateTemplateError(err) {
 			return fmt.Errorf("template with category '%s' and name '%s' already exists", req.Category, req.Name)
 		}
 		return fmt.Errorf("service: %w", err)
