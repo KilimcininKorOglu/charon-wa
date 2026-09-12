@@ -59,9 +59,11 @@ dev-build: check-zig
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(DEV_ARCH) CC="zig cc -target aarch64-linux-musl" CXX="zig c++ -target aarch64-linux-musl" go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/charon_linux_$(DEV_ARCH) .
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(DEV_ARCH) go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/worker_linux_$(DEV_ARCH) ./cmd/worker/
 
-# Rebuild on the host, then restart the containers that run the binaries.
+# Rebuild on the host, then recreate the containers that run the binaries.
+# `restart` would reuse the old container, so a changed environment in
+# docker-compose.local.yml or .env.docker would silently not apply.
 dev: dev-build
-	docker compose -f docker-compose.local.yml restart api worker
+	docker compose -f docker-compose.local.yml up -d --force-recreate api worker
 
 fmt:
 	go fmt ./...
