@@ -77,7 +77,7 @@ var ErrNoActiveInstance = errors.New("no active instance for this phone number")
 // normalisation backfill, or a LID, is not canonical and would otherwise stop
 // resolving.
 func GetActiveInstanceByPhoneNumber(phoneNumber string) (*Instance, error) {
-	var lastErr error = ErrNoActiveInstance
+	lastErr := ErrNoActiveInstance
 
 	for _, candidate := range phoneLookupCandidates(phoneNumber) {
 		inst, err := getActiveInstanceByExactPhone(candidate)
