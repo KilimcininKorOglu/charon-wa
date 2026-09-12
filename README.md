@@ -17,6 +17,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
   - [Local Development](#local-development)
   - [Production (Coolify)](#production-coolify)
 - [Web UI](#web-ui)
+- [HTTP Caching](#http-caching)
 - [Environment Variables](#environment-variables)
 - [Deployment](#deployment)
 - [User Profile API](#user-profile-api)
@@ -159,7 +160,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 - PostgreSQL 13 or later (the schema calls `gen_random_uuid()`, which is only built in from 13 onward)
 - Make (build tool)
 - Docker and Docker Compose
-- (Cross-compilation only) Zig (`brew install zig`)
+- Zig (`brew install zig`) — required by `make dev-build`, `make build-linux`, `make build-darwin` and `make build-all`, because the API binary needs a C toolchain for CGO
 
 ### Build
 
@@ -370,6 +371,26 @@ npm run build
 ```
 
 The built frontend is served as static files from the Go binary (`web/dist/`).
+
+---
+
+## HTTP Caching
+
+Every response carries a `Cache-Control` header. The class is chosen by request path:
+
+| Path                                          | Cache-Control                          | ETag           |
+|:----------------------------------------------|:---------------------------------------|:---------------|
+| `/assets/*`                                   | `public, max-age=31536000, immutable`  | none (Vite puts a content hash in the filename) |
+| `/favicon.svg`                                | `public, max-age=3600`                 | weak           |
+| SPA shell (every other path)                  | `public, max-age=300`                  | weak           |
+| `/uploads/*`                                  | `private, no-cache`                    | none, revalidates on `Last-Modified` |
+| `/`, `/ws`, `/login`, `/logout`, `/api/*`     | `no-store`                             | none           |
+
+A request that is not `GET` or `HEAD` always gets `no-store`.
+
+ETags are **weak** (`W/"mtime-size"`). The gzip middleware re-encodes the body after the handler runs, so a strong ETag across the gzip and identity variants would violate RFC 7232. `Vary: Accept-Encoding` is set by the gzip middleware.
+
+Conditional requests are answered by `http.ServeContent`: `If-None-Match` (comma-separated lists, `*`, and `W/` validators) and `If-Modified-Since` both return `304 Not Modified`. Static trees answer `HEAD` as well as `GET`.
 
 ---
 
@@ -707,12 +728,12 @@ Group operations via instance ID or phone number (requires session cookie):
 
 ## File Manager API
 
-File browser for the uploads directory (requires session cookie):
+File browser for the uploads directory. Both endpoints require the `admin` role, because the listing exposes every tenant directory:
 
-| Method | Endpoint     | Description                |
-|:-------|:-------------|:---------------------------|
-| GET    | `/api/files` | List uploaded files        |
-| DELETE | `/api/files` | Delete a file (admin only) |
+| Method | Endpoint     | Description         |
+|:-------|:-------------|:--------------------|
+| GET    | `/api/files` | List uploaded files |
+| DELETE | `/api/files` | Delete a file       |
 
 ---
 
@@ -1060,7 +1081,7 @@ Manage API keys for external integrations (requires session cookie):
 | GET    | `/api/api-keys`     | List all API keys for your user |
 | DELETE | `/api/api-keys/:id` | Revoke and delete an API key    |
 
-API keys use the `X-API-Key` header and are scoped per user. The raw key (`hwa_...32hex`) is shown only once on creation — it is stored as a SHA-256 hash. An optional `application` field locks the key to a specific outbox application.
+API keys use the `X-API-Key` header and are scoped per user. The raw key (`hwa_...32hex`) is shown only once on creation — it is stored as a SHA-256 hash. An optional `application` field locks the key to a specific outbox application. Creating and deleting a key needs the `admin` or `user` role; a `viewer` can only list.
 
 ---
 
@@ -1086,12 +1107,12 @@ The following list endpoints accept standard `?page=<n>&limit=<n>` query paramet
 | `GET /api/instances`            | 100             | 500         | clamped to 500       |
 | `GET /api/admin/users`          | 20              | 100         | falls back to 20     |
 | `GET /api/outbox/messages`      | 50              | 100         | falls back to 50     |
-| `GET /api/contacts/:instanceId` | 50              | 50          | falls back to 50     |
+| `GET /api/contacts/:instanceId` | 50              | 50          | clamped to 50        |
 | `GET /api/warming/logs`         | 100             | 500         | falls back to 100    |
 
 `page` is 1-indexed. Responses carry the `total` count alongside the items array so the caller can render pagination controls.
 
-Only `GET /api/instances` clamps an oversized `limit` down to the maximum. The other endpoints silently reset it to their default, so requesting `limit=1000` returns the default page size rather than an error.
+`GET /api/instances` and `GET /api/contacts/:instanceId` clamp an oversized `limit` down to the maximum. The other endpoints silently reset it to their default, so requesting `limit=1000` returns the default page size rather than an error.
 
 Warming list endpoints (`scripts`, `templates`, `rooms`) currently return the full user-scoped set without pagination — filter client-side if needed.
 
