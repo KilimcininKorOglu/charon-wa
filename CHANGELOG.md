@@ -9,6 +9,8 @@
 - `GET /api/system/phone-config` reports the default region, so the frontend validates exactly as the backend does
 - One-time backfill that normalises `instances.phone_number`, `warming_rooms.whitelisted_number` and pending `outbox.destination`, with the old values recorded in `phone_backfill_backup_v1` and rollback statements in `docs/DR.md`
 - `PhoneInput` component with a country selector on the messages, contacts and warming pages
+- `POST /api/system/phone-config` (admin only) sets the deployment-wide default country from the System Settings page, without a restart; the value is stored in `system_settings` and wins over `PHONE_DEFAULT_REGION` on the next startup
+- `phone_default_region` on `PUT /api/me` lets a user preselect their own country in phone fields from the profile page; an empty value follows the system default again
 
 ### Fixed
 - The blast outbox worker rejected every destination that did not start with `62`, so a deployment configured for any other country could not send at all

@@ -469,6 +469,24 @@ validates exactly as the backend does.
 **Both binaries read these variables.** The worker normalises destinations
 itself, so `PHONE_DEFAULT_REGION` must be set on the worker service too.
 
+#### Changing the default country without a restart
+
+`PHONE_DEFAULT_REGION` is the startup value. An admin can change it afterwards
+on the System Settings page, which calls `POST /api/system/phone-config` with
+`{"default_region":"TR"}`. The value is stored under the `phone_config` key in
+`system_settings` and wins over the environment variable on the next startup.
+The API applies it immediately; the worker picks it up on its next
+configuration reload, within 30 seconds.
+
+A user can override the country for themselves on their profile page, which
+sends `phone_default_region` to `PUT /api/me`. An empty value clears the
+override and the user follows the system value again.
+
+**The per-user value is a form preference only.** The parser always uses the
+system value, because a phone field sends the full international number in every
+case. The two settings therefore cannot drift apart: the user's country only
+decides how a number typed without a country code is read in the browser.
+
 ### Phone Number Backfill
 
 On first startup after this change the API rewrites stored numbers into their

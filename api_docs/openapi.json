@@ -4436,6 +4436,9 @@
                         },
                         "last_login_at": {
                           "type": "string"
+                        },
+                        "phone_default_region": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -4505,6 +4508,10 @@
                   },
                   "avatar_url": {
                     "type": "string"
+                  },
+                  "phone_default_region": {
+                    "type": "string",
+                    "description": "ISO 3166-1 alpha-2 code preselected in the user's phone fields. An empty string clears it, so the user follows the system default. It is a form preference only: the server always parses with the system region."
                   }
                 },
                 "required": [
@@ -4514,7 +4521,8 @@
               },
               "example": {
                 "full_name": "Updated Test Userr",
-                "avatar_url": "https://placehold.co/400x400/cccccc/969696.png?font=lato"
+                "avatar_url": "https://placehold.co/400x400/cccccc/969696.png?font=lato",
+                "phone_default_region": "TR"
               }
             }
           }
@@ -4567,6 +4575,9 @@
                           "type": "string"
                         },
                         "last_login_at": {
+                          "type": "string"
+                        },
+                        "phone_default_region": {
                           "type": "string"
                         }
                       },
@@ -4869,8 +4880,12 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": { "type": "boolean" },
-                    "message": { "type": "string" },
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
                     "data": {
                       "type": "object",
                       "properties": {
@@ -4879,10 +4894,16 @@
                           "description": "ISO 3166-1 alpha-2 region code, or an empty string"
                         }
                       },
-                      "required": ["defaultRegion"]
+                      "required": [
+                        "defaultRegion"
+                      ]
                     }
                   },
-                  "required": ["success", "message", "data"]
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
                 },
                 "example": {
                   "success": true,
@@ -4905,6 +4926,105 @@
           }
         ],
         "operationId": "getSystemPhoneConfig"
+      },
+      "post": {
+        "summary": "Update Phone Config",
+        "deprecated": false,
+        "description": "Sets the deployment-wide default region phone numbers are parsed against. Admin only. The value is stored in system_settings and wins over the PHONE_DEFAULT_REGION environment variable on the next startup. An empty string means every number must be in full international format. The API applies it immediately; the worker picks it up on its next configuration reload.",
+        "tags": [
+          "System Profile"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "default_region": {
+                    "type": "string",
+                    "description": "ISO 3166-1 alpha-2 region code, or an empty string to require a country code on every number"
+                  }
+                },
+                "required": [
+                  "default_region"
+                ]
+              },
+              "example": {
+                "default_region": "TR"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "defaultRegion": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "defaultRegion"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Phone configuration updated",
+                  "data": {
+                    "defaultRegion": "TR"
+                  }
+                }
+              }
+            },
+            "headers": {}
+          },
+          "400": {
+            "description": "Unknown region code",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "message": "Unknown region code",
+                  "error": {
+                    "code": "INVALID_REGION",
+                    "details": ""
+                  }
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "updateSystemPhoneConfig"
       }
     },
     "/api/system/identity": {
