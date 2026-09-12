@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 
@@ -99,6 +100,49 @@ func GetUser(c echo.Context) error {
 	return SuccessResponse(c, http.StatusOK, "User retrieved", user.ToResponse())
 }
 
+// isLastAdmin reports whether demoting this user would leave the system without
+// an admin account.
+func isLastAdmin(userID int64) bool {
+	targetUser, err := model.GetUserByID(userID)
+	if err != nil {
+		log.Printf("⚠️ Last-admin check: failed to load user %d: %v", userID, err)
+		return false
+	}
+	if targetUser.Role != "admin" {
+		return false
+	}
+
+	adminCount, err := model.CountAdminUsers()
+	if err != nil {
+		log.Printf("⚠️ Last-admin check: failed to count admins: %v", err)
+		return false
+	}
+	return adminCount <= 1
+}
+
+// validateRoleChange rejects an unknown role, a self-demotion, and the removal
+// of the last admin. The result is a written ErrorResponse, or nil.
+func validateRoleChange(c echo.Context, userID int64, role string) error {
+	validRoles := map[string]bool{"admin": true, "user": true, "viewer": true}
+	if !validRoles[role] {
+		return ErrorResponse(c, http.StatusBadRequest, "Invalid role", "INVALID_ROLE", "Valid roles: admin, user, viewer")
+	}
+	if role == "admin" {
+		return nil
+	}
+
+	// Prevent admin self-demotion (could lock out all admin access)
+	claims := getClaims(c)
+	if claims != nil && claims.UserID == userID {
+		return ErrorResponse(c, http.StatusBadRequest, "Cannot demote your own admin account", "SELF_DEMOTE", "")
+	}
+
+	if isLastAdmin(userID) {
+		return ErrorResponse(c, http.StatusBadRequest, "Cannot demote the last admin user", "LAST_ADMIN", "")
+	}
+	return nil
+}
+
 // UpdateUser updates user fields (admin only)
 func UpdateUser(c echo.Context) error {
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -111,28 +155,9 @@ func UpdateUser(c echo.Context) error {
 		return ErrorResponse(c, http.StatusBadRequest, "Invalid request body", "INVALID_BODY", err.Error())
 	}
 
-	// Validate role if provided
 	if req.Role != nil {
-		validRoles := map[string]bool{"admin": true, "user": true, "viewer": true}
-		if !validRoles[*req.Role] {
-			return ErrorResponse(c, http.StatusBadRequest, "Invalid role", "INVALID_ROLE", "Valid roles: admin, user, viewer")
-		}
-
-		// Prevent admin self-demotion (could lock out all admin access)
-		claims := getClaims(c)
-		if claims != nil && claims.UserID == userID && *req.Role != "admin" {
-			return ErrorResponse(c, http.StatusBadRequest, "Cannot demote your own admin account", "SELF_DEMOTE", "")
-		}
-
-		// Prevent demoting the last admin
-		if *req.Role != "admin" {
-			targetUser, err := model.GetUserByID(userID)
-			if err == nil && targetUser.Role == "admin" {
-				adminCount, err := model.CountAdminUsers()
-				if err == nil && adminCount <= 1 {
-					return ErrorResponse(c, http.StatusBadRequest, "Cannot demote the last admin user", "LAST_ADMIN", "")
-				}
-			}
+		if errResp := validateRoleChange(c, userID, *req.Role); errResp != nil {
+			return errResp
 		}
 	}
 
@@ -143,7 +168,9 @@ func UpdateUser(c echo.Context) error {
 
 	// Revoke sessions when user is deactivated or role changes
 	if (req.IsActive != nil && !*req.IsActive) || req.Role != nil {
-		_ = service.DestroyAllUserSessions(userID)
+		if err := service.DestroyAllUserSessions(userID); err != nil {
+			log.Printf("⚠️ Failed to revoke sessions for user %d: %v", userID, err)
+		}
 	}
 
 	return SuccessResponse(c, http.StatusOK, "User updated", user.ToResponse())
