@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useSyncExternalStore } from "react"
 import {
   AsYouType,
   getCountries,
@@ -9,6 +9,7 @@ import {
 } from "libphonenumber-js/max"
 import examples from "libphonenumber-js/mobile/examples"
 import api from "./api"
+import { useAuthStore } from "../stores/authStore"
 
 /**
  * Used until `GET /api/system/phone-config` answers, and kept if it never does.
@@ -138,37 +139,85 @@ export function countryOptions(): CountryOption[] {
 }
 
 /**
- * The backend's default region, fetched once per page load. The promise is
- * memoised at module scope, so mounting several PhoneInputs costs one request.
+ * The deployment-wide region an admin set, shared by every mounted PhoneInput.
+ * It is kept at module scope so mounting several fields costs one request, and
+ * published through useSyncExternalStore so a save updates all of them at once.
  */
-let regionPromise: Promise<CountryCode> | undefined
+let systemRegion: CountryCode = FALLBACK_REGION
+let systemRegionPromise: Promise<void> | undefined
+const systemRegionListeners = new Set<() => void>()
 
-function fetchDefaultRegion(): Promise<CountryCode> {
-  if (!regionPromise) {
-    regionPromise = api
+function publishSystemRegion(next: CountryCode) {
+  if (next === systemRegion) return
+  systemRegion = next
+  systemRegionListeners.forEach((notify) => notify())
+}
+
+function loadSystemRegion(): Promise<void> {
+  if (!systemRegionPromise) {
+    systemRegionPromise = api
       .get("/api/system/phone-config")
       .then((res) => {
         const region = res.data?.data?.defaultRegion
-        return typeof region === "string" && region !== "" ? (region as CountryCode) : FALLBACK_REGION
+        // An empty region means the server requires a country code on every
+        // number. The field still needs a country to preselect, so the fallback
+        // stands in for the selector only.
+        if (typeof region === "string" && region !== "") {
+          publishSystemRegion(region as CountryCode)
+        }
       })
-      .catch(() => FALLBACK_REGION)
+      .catch(() => {
+        // Leave the fallback in place: a missing endpoint must not break the form.
+      })
   }
-  return regionPromise
+  return systemRegionPromise
 }
 
-/** Reads the backend's default region, falling back while it loads. */
-export function useDefaultRegion(): CountryCode {
-  const [region, setRegion] = useState<CountryCode>(FALLBACK_REGION)
+/**
+ * Re-reads the system region. Call it after an admin saves, so open phone
+ * fields follow the new value without a reload.
+ */
+export function reloadSystemRegion(): Promise<void> {
+  systemRegionPromise = undefined
+  return loadSystemRegion()
+}
+
+function subscribeSystemRegion(notify: () => void): () => void {
+  systemRegionListeners.add(notify)
+  return () => {
+    systemRegionListeners.delete(notify)
+  }
+}
+
+/** The deployment-wide region, as the admin set it. */
+export function useSystemRegion(): CountryCode {
+  const region = useSyncExternalStore(
+    subscribeSystemRegion,
+    () => systemRegion,
+    () => systemRegion
+  )
 
   useEffect(() => {
-    let active = true
-    void fetchDefaultRegion().then((value) => {
-      if (active) setRegion(value)
-    })
-    return () => {
-      active = false
-    }
+    void loadSystemRegion()
   }, [])
 
   return region
+}
+
+/**
+ * The region a phone field preselects: the user's own preference when they set
+ * one, otherwise the deployment-wide value.
+ *
+ * This only decides how a number typed without a country code is read locally.
+ * The field always sends full E.164 digits, so a user whose preference differs
+ * from the server's region still gets their number accepted.
+ */
+export function useDefaultRegion(): CountryCode {
+  const systemDefault = useSystemRegion()
+  const userRegion = useAuthStore((state) => state.user?.phone_default_region)
+
+  if (userRegion && userRegion !== "") {
+    return userRegion as CountryCode
+  }
+  return systemDefault
 }

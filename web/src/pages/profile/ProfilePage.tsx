@@ -4,15 +4,20 @@ import { Card } from "../../components/ui/Card"
 import { Button } from "../../components/ui/Button"
 import { Input } from "../../components/ui/Input"
 import { Badge } from "../../components/ui/Badge"
+import { CountrySelect } from "../../components/ui/CountrySelect"
 import { UserCircle, Key, Upload, Plus, Trash2, Copy, X } from "lucide-react"
 import api from "../../lib/api"
+import { apiFailure } from "../../lib/apiError"
+import { useSystemRegion } from "../../lib/phone"
 import type { ApiResponse, User, APIKey } from "../../lib/types"
 import toast from "react-hot-toast"
 
 export function ProfilePage() {
   const { user, setUser, fetchProfile } = useAuthStore()
   const [fullName, setFullName] = useState("")
+  const [phoneRegion, setPhoneRegion] = useState("")
   const [saving, setSaving] = useState(false)
+  const systemRegion = useSystemRegion()
 
   const [oldPassword, setOldPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
@@ -31,6 +36,7 @@ export function ProfilePage() {
   useEffect(() => {
     if (user) {
       setFullName(user.full_name || "")
+      setPhoneRegion(user.phone_default_region || "")
     }
   }, [user])
 
@@ -77,13 +83,16 @@ export function ProfilePage() {
     e.preventDefault()
     setSaving(true)
     try {
-      const res = await api.put<ApiResponse<User>>("/api/me", { full_name: fullName })
+      const res = await api.put<ApiResponse<User>>("/api/me", {
+        full_name: fullName,
+        phone_default_region: phoneRegion,
+      })
       if (res.data.success && res.data.data) {
         setUser(res.data.data)
         toast.success("Profile updated")
       }
-    } catch {
-      toast.error("Failed to update profile")
+    } catch (err) {
+      toast.error(apiFailure(err, "Failed to update profile").message)
     } finally {
       setSaving(false)
     }
@@ -207,6 +216,16 @@ export function ProfilePage() {
             onChange={(e) => setFullName(e.target.value)}
             placeholder="Enter full name"
           />
+          <CountrySelect
+            label="Default Phone Country"
+            value={phoneRegion}
+            onChange={setPhoneRegion}
+            emptyLabel={`Follow the system default (${systemRegion})`}
+          />
+          <p className="text-[10px] text-cyber-green-muted">
+            Preselects the country in every phone field. It does not change which numbers the
+            server accepts, because a phone field always sends the full international number.
+          </p>
           <Button type="submit" loading={saving}>
             Save Changes
           </Button>

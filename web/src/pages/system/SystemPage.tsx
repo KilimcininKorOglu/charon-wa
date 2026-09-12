@@ -2,8 +2,12 @@ import { useEffect, useState, type FormEvent } from "react"
 import { Card } from "../../components/ui/Card"
 import { Button } from "../../components/ui/Button"
 import { Input } from "../../components/ui/Input"
-import { Settings, Upload, Building2 } from "lucide-react"
+import { CountrySelect } from "../../components/ui/CountrySelect"
+import { Settings, Upload, Building2, Phone } from "lucide-react"
 import api from "../../lib/api"
+import { apiFailure } from "../../lib/apiError"
+import { reloadSystemRegion } from "../../lib/phone"
+import { useAuthStore } from "../../stores/authStore"
 import type { ApiResponse } from "../../lib/types"
 import toast from "react-hot-toast"
 
@@ -20,10 +24,17 @@ interface SystemIdentity {
   second_logo_url?: string
 }
 
+interface PhoneConfig {
+  defaultRegion?: string
+}
+
 export function SystemPage() {
   const [identity, setIdentity] = useState<SystemIdentity>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [phoneRegion, setPhoneRegion] = useState("")
+  const [savingRegion, setSavingRegion] = useState(false)
+  const isAdmin = useAuthStore((state) => state.user?.role === "admin")
 
   useEffect(() => {
     const fetch = async () => {
@@ -36,6 +47,41 @@ export function SystemPage() {
     }
     fetch()
   }, [])
+
+  useEffect(() => {
+    const fetchPhoneConfig = async () => {
+      try {
+        const res = await api.get<ApiResponse<PhoneConfig>>("/api/system/phone-config")
+        setPhoneRegion(res.data.data?.defaultRegion ?? "")
+      } catch (err) {
+        toast.error(apiFailure(err, "Failed to load the phone configuration").message)
+      }
+    }
+    fetchPhoneConfig()
+  }, [])
+
+  const handlePhoneRegionSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+    setSavingRegion(true)
+
+    try {
+      const res = await api.post<ApiResponse>("/api/system/phone-config", {
+        default_region: phoneRegion,
+      })
+      if (!res.data.success) {
+        toast.error(res.data.message)
+        return
+      }
+      // Open phone fields read the region from a module-scope value, so refresh
+      // it here instead of asking the operator to reload the page.
+      await reloadSystemRegion()
+      toast.success("Default phone country updated")
+    } catch (err) {
+      toast.error(apiFailure(err, "Failed to update the default phone country").message)
+    } finally {
+      setSavingRegion(false)
+    }
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -154,6 +200,35 @@ export function SystemPage() {
           Save System Identity
         </Button>
       </form>
+
+      {isAdmin && (
+        <form onSubmit={handlePhoneRegionSubmit} className="mt-6">
+          <Card className="mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Phone size={16} className="text-cyber-green-dim" />
+              <h3 className="text-sm font-bold text-cyber-green-dim uppercase tracking-wider">
+                Phone Numbers
+              </h3>
+            </div>
+            <CountrySelect
+              label="Default Phone Country"
+              value={phoneRegion}
+              onChange={setPhoneRegion}
+              emptyLabel="No default (every number needs a country code)"
+              disabled={savingRegion}
+            />
+            <p className="mt-2 text-xs text-cyber-green-muted">
+              Phone fields preselect this country, and a number typed without a country
+              code is read as a number of this country. A user can override it on their
+              own profile page.
+            </p>
+          </Card>
+
+          <Button type="submit" loading={savingRegion} size="lg">
+            Save Phone Settings
+          </Button>
+        </form>
+      )}
     </div>
   )
 }

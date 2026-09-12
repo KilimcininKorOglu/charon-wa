@@ -22,6 +22,8 @@ export interface User {
   email_verified: boolean
   created_at: string
   last_login_at?: string
+  /** ISO 3166-1 alpha-2 code preselected in phone fields. Empty follows the system default. */
+  phone_default_region?: string
 }
 
 export interface LoginRequest {
