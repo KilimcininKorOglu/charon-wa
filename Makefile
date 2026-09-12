@@ -1,4 +1,4 @@
-.PHONY: build build-api build-worker build-linux build-windows build-darwin build-all clean run fmt vet lint check-zig help
+.PHONY: build build-api build-worker build-linux build-windows build-darwin build-all clean run dev dev-build fmt vet lint check-zig help
 
 BUILD_DIR=bin
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -49,6 +49,20 @@ clean:
 run: build
 	./$(BUILD_DIR)/charon
 
+# Local development: the host compiles the Linux binaries, the containers only
+# run them. DEV_ARCH must match the Docker engine architecture.
+DEV_ARCH ?= arm64
+
+# The API links against musl, because the dev containers run on alpine.
+dev-build: check-zig
+	@mkdir -p $(BUILD_DIR)
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(DEV_ARCH) CC="zig cc -target aarch64-linux-musl" CXX="zig c++ -target aarch64-linux-musl" go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/charon_linux_$(DEV_ARCH) .
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(DEV_ARCH) go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/worker_linux_$(DEV_ARCH) ./cmd/worker/
+
+# Rebuild on the host, then restart the containers that run the binaries.
+dev: dev-build
+	docker compose -f docker-compose.local.yml restart api worker
+
 fmt:
 	go fmt ./...
 
@@ -71,6 +85,8 @@ help:
 	@echo "  build-all      - Cross-compile for all platforms"
 	@echo "  clean          - Remove build artifacts"
 	@echo "  run            - Build and run the API server"
+	@echo "  dev-build      - Cross-compile the Linux dev binaries on the host"
+	@echo "  dev            - dev-build, then restart the api and worker containers"
 	@echo "  fmt            - Format code"
 	@echo "  vet            - Run go vet"
 	@echo "  lint           - Run fmt and vet"
