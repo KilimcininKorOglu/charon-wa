@@ -43,27 +43,7 @@ func HandleIncomingMessage(instanceID, sender, messageText string, chatJID types
 		return nil
 	}
 
-	// Mark message as read before processing (with natural delay)
-	session, err := GetSession(instanceID)
-	if err == nil && session.Client != nil {
-		// Random delay 2-3 seconds before marking as read (more natural)
-		// Read-receipt jitter, not a secret.
-		// #nosec G404
-		readDelay := time.Duration(2+rand.Intn(2)) * time.Second
-		time.Sleep(readDelay)
-
-		senderJID, parseErr := types.ParseJID(senderID)
-		if parseErr != nil {
-			log.Printf("[HUMAN_VS_BOT] Warning: failed to parse sender JID: %v", parseErr)
-		} else {
-			err = session.Client.MarkRead(context.Background(), []types.MessageID{messageID}, time.Now(), chatJID, senderJID)
-			if err != nil {
-				log.Printf("[HUMAN_VS_BOT] Warning: failed to mark message as read: %v", err)
-			} else {
-				log.Printf("[HUMAN_VS_BOT] ✓ Marked message as read after %v delay", readDelay)
-			}
-		}
-	}
+	markIncomingRead(instanceID, messageID, senderID, chatJID)
 
 	// Save incoming human message to conversation history
 	var userID int64
@@ -75,10 +55,47 @@ func HandleIncomingMessage(instanceID, sender, messageText string, chatJID types
 	}
 
 	// Trigger WebSocket event for real-time UI update (Human message)
-	publishHumanVsBotEvent(room, 0, sender, instanceID, messageText, "SUCCESS", "", "HUMAN")
+	publishHumanVsBotEvent(room, sender, instanceID, messageText, "SUCCESS", "", "HUMAN")
 
-	// Rate limiting: check cooldown
-	roomKey := room.ID.String()
+	if inReplyCooldown(room.ID.String(), sender) {
+		return nil
+	}
+
+	go processAutoReply(room, instanceID, sender)
+	return nil
+}
+
+// markIncomingRead sends a read receipt after a short human-like delay. Every
+// step is best-effort: a failure only means the sender sees no blue tick.
+func markIncomingRead(instanceID, messageID, senderID string, chatJID types.JID) {
+	session, err := GetSession(instanceID)
+	if err != nil || session.Client == nil {
+		return
+	}
+
+	// Random delay 2-3 seconds before marking as read (more natural)
+	// Read-receipt jitter, not a secret.
+	// #nosec G404
+	readDelay := time.Duration(2+rand.Intn(2)) * time.Second
+	time.Sleep(readDelay)
+
+	senderJID, parseErr := types.ParseJID(senderID)
+	if parseErr != nil {
+		log.Printf("[HUMAN_VS_BOT] Warning: failed to parse sender JID: %v", parseErr)
+		return
+	}
+
+	if err := session.Client.MarkRead(context.Background(), []types.MessageID{messageID}, time.Now(), chatJID, senderJID); err != nil {
+		log.Printf("[HUMAN_VS_BOT] Warning: failed to mark message as read: %v", err)
+		return
+	}
+	log.Printf("[HUMAN_VS_BOT] ✓ Marked message as read after %v delay", readDelay)
+}
+
+// inReplyCooldown reports whether the room replied too recently. A room outside
+// its cooldown is stamped immediately, so two concurrent messages cannot both
+// pass.
+func inReplyCooldown(roomKey, sender string) bool {
 	if lastTime, ok := lastReplyTime.Load(roomKey); ok {
 		elapsed := time.Since(lastTime.(time.Time))
 		cooldown := time.Duration(config.WarmingAutoReplyCooldown) * time.Second
@@ -86,15 +103,12 @@ func HandleIncomingMessage(instanceID, sender, messageText string, chatJID types
 		if elapsed < cooldown {
 			remaining := cooldown - elapsed
 			log.Printf("[HUMAN_VS_BOT] Rate limit: ignoring message from %s (cooldown: %v remaining)", sender, remaining.Round(time.Second))
-			return nil
+			return true
 		}
 	}
 
-	// Update last reply time immediately to prevent race condition
 	lastReplyTime.Store(roomKey, time.Now())
-
-	go processAutoReply(room, instanceID, sender)
-	return nil
+	return false
 }
 
 func processAutoReply(room *warmingModel.WarmingRoom, instanceID, sender string) {
@@ -227,7 +241,7 @@ func sendReply(instanceID, recipient, message string, lineID int64, room *warmin
 
 	if !room.SendRealMessage {
 		logWarming(room.ID, lineID, instanceID, recipient, message, "SUCCESS", "dry-run mode", userID)
-		publishHumanVsBotEvent(room, lineID, instanceID, recipient, message, "SUCCESS", "dry-run mode", "BOT")
+		publishHumanVsBotEvent(room, instanceID, recipient, message, "SUCCESS", "dry-run mode", "BOT")
 		return nil
 	}
 
@@ -235,12 +249,12 @@ func sendReply(instanceID, recipient, message string, lineID int64, room *warmin
 
 	if !success {
 		logWarming(room.ID, lineID, instanceID, recipient, message, "FAILED", errMsg, userID)
-		publishHumanVsBotEvent(room, lineID, instanceID, recipient, message, "FAILED", errMsg, "BOT")
+		publishHumanVsBotEvent(room, instanceID, recipient, message, "FAILED", errMsg, "BOT")
 		return errors.New(errMsg)
 	}
 
 	logWarming(room.ID, lineID, instanceID, recipient, message, "SUCCESS", "", userID)
-	publishHumanVsBotEvent(room, lineID, instanceID, recipient, message, "SUCCESS", "", "BOT")
+	publishHumanVsBotEvent(room, instanceID, recipient, message, "SUCCESS", "", "BOT")
 
 	return nil
 }
@@ -254,7 +268,7 @@ func logWarming(roomID uuid.UUID, lineID int64, instanceID, recipient, message, 
 	}
 }
 
-func publishHumanVsBotEvent(room *warmingModel.WarmingRoom, lineID int64, senderID, receiverID, message, status, errorMsg, actorRole string) {
+func publishHumanVsBotEvent(room *warmingModel.WarmingRoom, senderID, receiverID, message, status, errorMsg, actorRole string) {
 	if Realtime == nil {
 		return
 	}
