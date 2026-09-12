@@ -579,6 +579,7 @@ func registerAPIRoutes(e *echo.Echo, api *echo.Group, hub *ws.Hub) {
 	// =====================================================
 	api.GET("/system/identity", handler.GetSystemIdentityHandler)                                 // Publicly accessible via API token
 	api.POST("/system/identity", handler.UpdateSystemIdentityFull, customMiddleware.RequireAdmin) // Unified: Text + Logos (Admin Only)
+	api.GET("/system/phone-config", handler.GetPhoneConfigHandler)                                // Read-only: the region the parser uses
 
 	// =====================================================
 	// ADMIN ROUTES (Admin Only)
