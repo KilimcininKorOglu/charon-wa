@@ -120,6 +120,9 @@ func bootstrapRuntime() {
 	log.Println("Ensuring database schema...")
 	helper.InitCustomSchema()
 
+	// Runs before the device loader, which writes instances.phone_number.
+	helper.RunPhoneBackfill()
+
 	if err := model.SeedAdminUser(); err != nil {
 		log.Printf("Warning: Failed to seed admin user: %v", err)
 	}
