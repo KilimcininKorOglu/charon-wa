@@ -18,6 +18,46 @@ type WebhookConfigRequest struct {
 	Secret string `json:"secret"`
 }
 
+// bindWebhookConfigRequest reads and validates the request body. The returned
+// error is an already-written ErrorResponse.
+func bindWebhookConfigRequest(c echo.Context) (WebhookConfigRequest, error) {
+	var req WebhookConfigRequest
+	if err := c.Bind(&req); err != nil {
+		return req, ErrorResponse(c, http.StatusBadRequest,
+			"Invalid request body", "INVALID_REQUEST", err.Error())
+	}
+
+	if req.URL == "" {
+		return req, ErrorResponse(c, http.StatusBadRequest,
+			"Field 'url' is required", "VALIDATION_ERROR", "")
+	}
+
+	// Validate webhook URL (scheme + no private IPs)
+	if err := helper.ValidateExternalURL(req.URL); err != nil {
+		return req, ErrorResponse(c, http.StatusBadRequest,
+			"Invalid webhook URL", "INVALID_URL", err.Error())
+	}
+	return req, nil
+}
+
+// resolveWebhookSecret keeps the supplied secret, reuses the stored one, or
+// generates a new 32-byte value when neither exists.
+func resolveWebhookSecret(requested, existing string) (string, error) {
+	if requested != "" {
+		return requested, nil
+	}
+	if existing != "" {
+		return existing, nil
+	}
+
+	// generate new random secret (32 bytes -> 64 hex chars)
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
 // POST /api/instances/:instanceId/webhook
 func SetWebhookConfig(c echo.Context) error {
 	instanceID := c.Param("instanceId")
@@ -27,21 +67,9 @@ func SetWebhookConfig(c echo.Context) error {
 			"instanceId is required", "VALIDATION_ERROR", "")
 	}
 
-	var req WebhookConfigRequest
-	if err := c.Bind(&req); err != nil {
-		return ErrorResponse(c, http.StatusBadRequest,
-			"Invalid request body", "INVALID_REQUEST", err.Error())
-	}
-
-	if req.URL == "" {
-		return ErrorResponse(c, http.StatusBadRequest,
-			"Field 'url' is required", "VALIDATION_ERROR", "")
-	}
-
-	// Validate webhook URL (scheme + no private IPs)
-	if err := helper.ValidateExternalURL(req.URL); err != nil {
-		return ErrorResponse(c, http.StatusBadRequest,
-			"Invalid webhook URL", "INVALID_URL", err.Error())
+	req, errResp := bindWebhookConfigRequest(c)
+	if errResp != nil {
+		return errResp
 	}
 
 	// get current instance (to know existing secret)
@@ -51,22 +79,10 @@ func SetWebhookConfig(c echo.Context) error {
 			"Instance not found", "INSTANCE_NOT_FOUND", "")
 	}
 
-	effectiveSecret := req.Secret
-
-	// if client does not provide secret, generate or reuse existing
-	if effectiveSecret == "" {
-		if !inst.WebhookSecret.Valid || inst.WebhookSecret.String == "" {
-			// generate new random secret (32 bytes -> 64 hex chars)
-			b := make([]byte, 32)
-			if _, err := rand.Read(b); err != nil {
-				return ErrorResponse(c, http.StatusInternalServerError,
-					"Failed to generate webhook secret", "WEBHOOK_SECRET_GENERATION_FAILED", err.Error())
-			}
-			effectiveSecret = hex.EncodeToString(b)
-		} else {
-			// reuse existing secret
-			effectiveSecret = inst.WebhookSecret.String
-		}
+	effectiveSecret, err := resolveWebhookSecret(req.Secret, inst.WebhookSecret.String)
+	if err != nil {
+		return ErrorResponse(c, http.StatusInternalServerError,
+			"Failed to generate webhook secret", "WEBHOOK_SECRET_GENERATION_FAILED", err.Error())
 	}
 
 	// Update DB with url + effectiveSecret
