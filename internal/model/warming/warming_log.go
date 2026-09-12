@@ -37,14 +37,10 @@ type WarmingLogResponse struct {
 	ExecutedAt         time.Time `json:"executedAt"`
 }
 
-// GetAllWarmingLogs retrieves logs with optional filters
-func GetAllWarmingLogs(roomID, status string, limit int, userID int64, isAdmin bool) ([]WarmingLog, error) {
-	query := `
-		SELECT id, room_id, script_line_id, sender_instance_id, receiver_instance_id,
-		       message_content, status, error_message, created_by, executed_at
-		FROM warming_logs
-		WHERE 1=1
-	`
+// warmingLogFilter builds the WHERE/ORDER/LIMIT tail of the log query. A
+// non-admin caller only sees their own rows, and may filter by a room they own.
+func warmingLogFilter(roomID, status string, limit int, userID int64, isAdmin bool) (string, []any, error) {
+	query := ""
 	var args []any
 	argIndex := 1
 
@@ -58,13 +54,13 @@ func GetAllWarmingLogs(roomID, status string, limit int, userID int64, isAdmin b
 	if roomID != "" {
 		roomUUID, err := uuid.Parse(roomID)
 		if err != nil {
-			return nil, fmt.Errorf("invalid room ID format: %w", err)
+			return "", nil, fmt.Errorf("invalid room ID format: %w", err)
 		}
 		// For non-admin users, verify room ownership before filtering by it.
 		if !isAdmin {
 			isOwner, err := CheckRoomOwnership(roomID, userID)
 			if err != nil || !isOwner {
-				return nil, fmt.Errorf("forbidden: you do not have access to this room")
+				return "", nil, fmt.Errorf("forbidden: you do not have access to this room")
 			}
 		}
 		query += fmt.Sprintf(" AND room_id = $%d", argIndex)
@@ -87,6 +83,42 @@ func GetAllWarmingLogs(roomID, status string, limit int, userID int64, isAdmin b
 		args = append(args, limit)
 	}
 
+	return query, args, nil
+}
+
+// scanWarmingLog reads one row of the log query.
+func scanWarmingLog(rows *sql.Rows) (WarmingLog, error) {
+	var log WarmingLog
+	err := rows.Scan(
+		&log.ID,
+		&log.RoomID,
+		&log.ScriptLineID,
+		&log.SenderInstanceID,
+		&log.ReceiverInstanceID,
+		&log.MessageContent,
+		&log.Status,
+		&log.ErrorMessage,
+		&log.CreatedBy,
+		&log.ExecutedAt,
+	)
+	return log, err
+}
+
+// GetAllWarmingLogs retrieves logs with optional filters
+func GetAllWarmingLogs(roomID, status string, limit int, userID int64, isAdmin bool) ([]WarmingLog, error) {
+	query := `
+		SELECT id, room_id, script_line_id, sender_instance_id, receiver_instance_id,
+		       message_content, status, error_message, created_by, executed_at
+		FROM warming_logs
+		WHERE 1=1
+	`
+
+	filter, args, err := warmingLogFilter(roomID, status, limit, userID, isAdmin)
+	if err != nil {
+		return nil, err
+	}
+	query += filter
+
 	rows, err := database.AppDB.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query warming logs: %w", err)
@@ -95,26 +127,14 @@ func GetAllWarmingLogs(roomID, status string, limit int, userID int64, isAdmin b
 
 	var logs []WarmingLog
 	for rows.Next() {
-		var log WarmingLog
-		err := rows.Scan(
-			&log.ID,
-			&log.RoomID,
-			&log.ScriptLineID,
-			&log.SenderInstanceID,
-			&log.ReceiverInstanceID,
-			&log.MessageContent,
-			&log.Status,
-			&log.ErrorMessage,
-			&log.CreatedBy,
-			&log.ExecutedAt,
-		)
+		log, err := scanWarmingLog(rows)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan warming log: %w", err)
 		}
 		logs = append(logs, log)
 	}
 
-	return logs, nil
+	return logs, rows.Err()
 }
 
 // GetWarmingLogByID retrieves single log by ID

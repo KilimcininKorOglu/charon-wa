@@ -120,7 +120,7 @@ func GetAllWarmingScriptLines(scriptID int64) ([]WarmingScriptLine, error) {
 		lines = append(lines, line)
 	}
 
-	return lines, nil
+	return lines, rows.Err()
 }
 
 // GetWarmingScriptLineByID retrieves single line by ID
@@ -226,61 +226,51 @@ func ReorderScriptLines(scriptID int64, req *ReorderScriptLinesRequest) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// PHASE 1: Set all sequences to temporary negative values to avoid unique constraint conflicts
-	// This prevents conflicts when swapping sequences (e.g., 1→2 and 2→1)
-	tempQuery := `
-		UPDATE warming_script_lines
-		SET sequence_order = $1
-		WHERE id = $2 AND script_id = $3
-	`
-
+	// PHASE 1: Set all sequences to temporary negative values to avoid unique
+	// constraint conflicts. This prevents conflicts when swapping sequences
+	// (e.g., 1→2 and 2→1).
 	for i, line := range req.Lines {
 		// Use negative index as temporary value (e.g., -1, -2, -3, ...)
-		tempSequence := -(i + 1)
-
-		result, err := tx.Exec(tempQuery, tempSequence, line.ID, scriptID)
-		if err != nil {
-			return fmt.Errorf("failed to set temporary sequence for line %d: %w", line.ID, err)
-		}
-
-		rows, err := result.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("failed to get rows affected for line %d: %w", line.ID, err)
-		}
-
-		if rows == 0 {
-			return fmt.Errorf("line %d not found in script %d", line.ID, scriptID)
+		if err := setLineSequence(tx, scriptID, line.ID, -(i + 1)); err != nil {
+			return err
 		}
 	}
 
 	// PHASE 2: Update to final sequence orders
-	finalQuery := `
+	for _, line := range req.Lines {
+		if err := setLineSequence(tx, scriptID, line.ID, line.SequenceOrder); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// setLineSequence writes one line's sequence_order inside the reorder
+// transaction.
+func setLineSequence(tx *sql.Tx, scriptID, lineID int64, sequence int) error {
+	const query = `
 		UPDATE warming_script_lines
 		SET sequence_order = $1
 		WHERE id = $2 AND script_id = $3
 	`
 
-	for _, line := range req.Lines {
-		result, err := tx.Exec(finalQuery, line.SequenceOrder, line.ID, scriptID)
-		if err != nil {
-			return fmt.Errorf("failed to update line %d to final sequence: %w", line.ID, err)
-		}
-
-		rows, err := result.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("failed to get rows affected for line %d: %w", line.ID, err)
-		}
-
-		if rows == 0 {
-			return fmt.Errorf("line %d not found in script %d", line.ID, scriptID)
-		}
+	result, err := tx.Exec(query, sequence, lineID, scriptID)
+	if err != nil {
+		return fmt.Errorf("failed to set sequence for line %d: %w", lineID, err)
 	}
 
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected for line %d: %w", lineID, err)
 	}
-
+	if rows == 0 {
+		return fmt.Errorf("line %d not found in script %d", lineID, scriptID)
+	}
 	return nil
 }
 
