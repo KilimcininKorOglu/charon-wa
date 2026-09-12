@@ -513,6 +513,15 @@ func InitCustomSchema() {
 		ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP WITH TIME ZONE;
 	`, "Could not add login lockout columns to users", "User management schema created successfully")
 
+	// Per-user phone region preference. It only preselects the country in the
+	// web phone field; the parser uses the deployment-wide value.
+	tryExec(db, `
+		ALTER TABLE users
+		ADD COLUMN IF NOT EXISTS phone_default_region VARCHAR(2);
+
+		COMMENT ON COLUMN users.phone_default_region IS 'ISO 3166-1 alpha-2 code preselected in the web phone field. NULL means follow the system default.';
+	`, "Could not add phone_default_region to users", "Per-user phone region column ensured")
+
 	// =====================================================
 	// WORKER BLAST OUTBOX SCHEMA
 	// =====================================================

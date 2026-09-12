@@ -6,7 +6,9 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 
+	"charon/config"
 	"charon/internal/helper"
 	"charon/internal/model"
 	"charon/internal/service"
@@ -144,6 +146,24 @@ func GetCurrentUser(c echo.Context) error {
 	return SuccessResponse(c, http.StatusOK, "User profile retrieved", user.ToResponse())
 }
 
+// parsePhoneRegionPreference validates a per-user region code. An empty value
+// clears the preference, so the user follows the system default again. The
+// second result is a written ErrorResponse for the caller to propagate.
+func parsePhoneRegionPreference(c echo.Context, raw string) (sql.NullString, error) {
+	region := strings.ToUpper(strings.TrimSpace(raw))
+	if region == "" {
+		return sql.NullString{}, nil
+	}
+
+	if !config.IsSupportedRegion(region) {
+		return sql.NullString{}, ErrorResponse(c, http.StatusBadRequest,
+			"Unknown region code", "INVALID_REGION",
+			"Expected an ISO 3166-1 alpha-2 code such as TR, got "+region)
+	}
+
+	return sql.NullString{String: region, Valid: true}, nil
+}
+
 // UpdateCurrentUser updates the current user's profile
 // PUT /api/me
 func UpdateCurrentUser(c echo.Context) error {
@@ -169,6 +189,13 @@ func UpdateCurrentUser(c echo.Context) error {
 	}
 	if req.AvatarURL != nil {
 		user.AvatarURL = sql.NullString{String: *req.AvatarURL, Valid: true}
+	}
+	if req.PhoneDefaultRegion != nil {
+		region, errResp := parsePhoneRegionPreference(c, *req.PhoneDefaultRegion)
+		if errResp != nil {
+			return errResp
+		}
+		user.PhoneDefaultRegion = region
 	}
 
 	err = model.UpdateUser(user)

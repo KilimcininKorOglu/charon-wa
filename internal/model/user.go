@@ -28,6 +28,10 @@ type User struct {
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	LastLoginAt     sql.NullTime
+
+	// PhoneDefaultRegion preselects the country in the web phone field. It is a
+	// display preference only and never reaches the phone number parser.
+	PhoneDefaultRegion sql.NullString
 }
 
 // UserResponse is the JSON response format for user data (without sensitive fields)
@@ -43,6 +47,8 @@ type UserResponse struct {
 	EmailVerified bool      `json:"email_verified"`
 	CreatedAt     time.Time `json:"created_at"`
 	LastLoginAt   time.Time `json:"last_login_at"`
+
+	PhoneDefaultRegion string `json:"phone_default_region,omitempty"`
 }
 
 // CreateUserRequest is the request payload for creating a new user
@@ -58,6 +64,10 @@ type CreateUserRequest struct {
 type UpdateUserRequest struct {
 	FullName  *string `json:"full_name,omitempty"`
 	AvatarURL *string `json:"avatar_url,omitempty"`
+
+	// PhoneDefaultRegion is an ISO 3166-1 alpha-2 code. An empty string clears
+	// the preference and falls back to the system default.
+	PhoneDefaultRegion *string `json:"phone_default_region,omitempty"`
 }
 
 // ChangePasswordRequest is the request payload for changing password
@@ -198,7 +208,7 @@ func GetUserByID(id int64) (*User, error) {
 	query := `
 		SELECT id, username, email, password_hash, full_name, avatar_url,
 			auth_provider, oauth_provider_id, role, is_active, email_verified,
-			created_at, updated_at, last_login_at
+			created_at, updated_at, last_login_at, phone_default_region
 		FROM users
 		WHERE id = $1
 	`
@@ -219,6 +229,7 @@ func GetUserByID(id int64) (*User, error) {
 		&user.CreatedAt,
 		&user.UpdatedAt,
 		&user.LastLoginAt,
+		&user.PhoneDefaultRegion,
 	)
 
 	if err == sql.ErrNoRows {
@@ -237,11 +248,11 @@ func UpdateUser(user *User) error {
 
 	query := `
 		UPDATE users
-		SET full_name = $1, avatar_url = $2, updated_at = NOW()
-		WHERE id = $3
+		SET full_name = $1, avatar_url = $2, phone_default_region = $3, updated_at = NOW()
+		WHERE id = $4
 	`
 
-	result, err := db.Exec(query, user.FullName, user.AvatarURL, user.ID)
+	result, err := db.Exec(query, user.FullName, user.AvatarURL, user.PhoneDefaultRegion, user.ID)
 	if err != nil {
 		return err
 	}
@@ -441,6 +452,9 @@ func (u *User) ToResponse() UserResponse {
 	}
 	if u.LastLoginAt.Valid {
 		resp.LastLoginAt = u.LastLoginAt.Time
+	}
+	if u.PhoneDefaultRegion.Valid {
+		resp.PhoneDefaultRegion = u.PhoneDefaultRegion.String
 	}
 
 	return resp
