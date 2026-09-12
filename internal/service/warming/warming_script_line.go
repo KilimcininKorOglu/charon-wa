@@ -16,42 +16,64 @@ var (
 	ErrScriptLineNotFound               = errors.New("warming script line not found")
 )
 
+// defaultTypingDurationSec is used when the request carries no usable value.
+const defaultTypingDurationSec = 3
+
+// validateScriptLinePayload checks the request fields shared by create and
+// update.
+func validateScriptLinePayload(sequenceOrder int, actorRole, messageContent string) error {
+	if sequenceOrder <= 0 {
+		return ErrScriptLineSequenceOrderInvalid
+	}
+	if actorRole != "ACTOR_A" && actorRole != "ACTOR_B" {
+		return ErrScriptLineActorRoleInvalid
+	}
+	if strings.TrimSpace(messageContent) == "" {
+		return ErrScriptLineMessageContentRequired
+	}
+	return nil
+}
+
+// normalizeTypingDuration replaces a non-positive duration with the default.
+func normalizeTypingDuration(seconds int) int {
+	if seconds <= 0 {
+		return defaultTypingDurationSec
+	}
+	return seconds
+}
+
+// ensureScriptExists confirms the parent script is present before its lines are
+// read or written.
+func ensureScriptExists(scriptID int64) error {
+	if _, err := warmingModel.GetWarmingScriptByID(int(scriptID)); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return errors.New("script not found")
+		}
+		return fmt.Errorf("failed to verify script: %w", err)
+	}
+	return nil
+}
+
+// isDuplicateSequenceError reports whether the database rejected the write
+// because the sequence_order is already taken.
+func isDuplicateSequenceError(err error) bool {
+	return strings.Contains(err.Error(), "unique_script_sequence") || strings.Contains(err.Error(), "duplicate")
+}
+
 // CreateWarmingScriptLineService creates new script line with validation
 func CreateWarmingScriptLineService(scriptID int64, req *warmingModel.CreateWarmingScriptLineRequest) (*warmingModel.WarmingScriptLine, error) {
-	// Validate sequence order
-	if req.SequenceOrder <= 0 {
-		return nil, ErrScriptLineSequenceOrderInvalid
+	if err := validateScriptLinePayload(req.SequenceOrder, req.ActorRole, req.MessageContent); err != nil {
+		return nil, err
+	}
+	req.TypingDurationSec = normalizeTypingDuration(req.TypingDurationSec)
+
+	if err := ensureScriptExists(scriptID); err != nil {
+		return nil, err
 	}
 
-	// Validate actor role
-	if req.ActorRole != "ACTOR_A" && req.ActorRole != "ACTOR_B" {
-		return nil, ErrScriptLineActorRoleInvalid
-	}
-
-	// Validate message content
-	if strings.TrimSpace(req.MessageContent) == "" {
-		return nil, ErrScriptLineMessageContentRequired
-	}
-
-	// Validate typing duration (default to 3 if not provided or invalid)
-	if req.TypingDurationSec <= 0 {
-		req.TypingDurationSec = 3 // Default value
-	}
-
-	// Check if script exists
-	_, err := warmingModel.GetWarmingScriptByID(int(scriptID))
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, errors.New("script not found")
-		}
-		return nil, fmt.Errorf("failed to verify script: %w", err)
-	}
-
-	// Create in database
 	line, err := warmingModel.CreateWarmingScriptLine(scriptID, req)
 	if err != nil {
-		// Check for unique constraint violation (duplicate sequence_order)
-		if strings.Contains(err.Error(), "unique_script_sequence") || strings.Contains(err.Error(), "duplicate") {
+		if isDuplicateSequenceError(err) {
 			return nil, fmt.Errorf("sequence_order %d already exists for this script", req.SequenceOrder)
 		}
 		return nil, fmt.Errorf("service: %w", err)
@@ -62,13 +84,8 @@ func CreateWarmingScriptLineService(scriptID int64, req *warmingModel.CreateWarm
 
 // GetAllWarmingScriptLinesService retrieves all lines for a script
 func GetAllWarmingScriptLinesService(scriptID int64) ([]warmingModel.WarmingScriptLine, error) {
-	// Check if script exists
-	_, err := warmingModel.GetWarmingScriptByID(int(scriptID))
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, errors.New("script not found")
-		}
-		return nil, fmt.Errorf("failed to verify script: %w", err)
+	if err := ensureScriptExists(scriptID); err != nil {
+		return nil, err
 	}
 
 	lines, err := warmingModel.GetAllWarmingScriptLines(scriptID)
@@ -102,34 +119,17 @@ func UpdateWarmingScriptLineService(scriptID int64, lineID int64, req *warmingMo
 		return errors.New("invalid line ID")
 	}
 
-	// Validate sequence order
-	if req.SequenceOrder <= 0 {
-		return ErrScriptLineSequenceOrderInvalid
+	if err := validateScriptLinePayload(req.SequenceOrder, req.ActorRole, req.MessageContent); err != nil {
+		return err
 	}
+	req.TypingDurationSec = normalizeTypingDuration(req.TypingDurationSec)
 
-	// Validate actor role
-	if req.ActorRole != "ACTOR_A" && req.ActorRole != "ACTOR_B" {
-		return ErrScriptLineActorRoleInvalid
-	}
-
-	// Validate message content
-	if strings.TrimSpace(req.MessageContent) == "" {
-		return ErrScriptLineMessageContentRequired
-	}
-
-	// Validate typing duration
-	if req.TypingDurationSec <= 0 {
-		req.TypingDurationSec = 3 // Default value
-	}
-
-	// Update in database
 	err := warmingModel.UpdateWarmingScriptLine(scriptID, lineID, req)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			return ErrScriptLineNotFound
 		}
-		// Check for unique constraint violation
-		if strings.Contains(err.Error(), "unique_script_sequence") || strings.Contains(err.Error(), "duplicate") {
+		if isDuplicateSequenceError(err) {
 			return fmt.Errorf("sequence_order %d already exists for this script", req.SequenceOrder)
 		}
 		return fmt.Errorf("service: %w", err)
@@ -162,36 +162,40 @@ func GenerateWarmingScriptLinesService(scriptID int64, category string, lineCoun
 		return nil, errors.New("line_count must be between 1 and 100")
 	}
 
-	// Check if script exists
-	_, err := warmingModel.GetWarmingScriptByID(int(scriptID))
+	if err := ensureScriptExists(scriptID); err != nil {
+		return nil, err
+	}
+
+	startSequence, err := nextSequenceStart(scriptID)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, errors.New("script not found")
-		}
-		return nil, fmt.Errorf("failed to verify script: %w", err)
+		return nil, err
 	}
 
-	// Get existing lines to determine starting sequence
-	existingLines, err := warmingModel.GetAllWarmingScriptLines(scriptID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get existing lines: %w", err)
-	}
-
-	// Find max sequence (not count, to support gaps)
-	startSequence := 1
-	for _, line := range existingLines {
-		if line.SequenceOrder >= startSequence {
-			startSequence = line.SequenceOrder + 1
-		}
-	}
-
-	// Generate conversation lines from template
 	templateLines, err := GenerateConversationLines(category, lineCount)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create lines in database
+	return persistGeneratedLines(scriptID, startSequence, templateLines)
+}
+
+// nextSequenceStart returns the first free sequence_order. It uses the maximum
+// existing order rather than the line count, so gaps are preserved.
+func nextSequenceStart(scriptID int64) (int, error) {
+	existingLines, err := warmingModel.GetAllWarmingScriptLines(scriptID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get existing lines: %w", err)
+	}
+
+	startSequence := 1
+	for _, line := range existingLines {
+		startSequence = max(startSequence, line.SequenceOrder+1)
+	}
+	return startSequence, nil
+}
+
+// persistGeneratedLines writes the generated conversation to the script.
+func persistGeneratedLines(scriptID int64, startSequence int, templateLines []TemplateLine) ([]warmingModel.WarmingScriptLine, error) {
 	var createdLines []warmingModel.WarmingScriptLine
 	for i, templateLine := range templateLines {
 		req := &warmingModel.CreateWarmingScriptLineRequest{
