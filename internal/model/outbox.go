@@ -247,6 +247,9 @@ func ListOutboxMessages(ctx context.Context, filter OutboxFilter) ([]OutboxMessa
 	}
 
 	limit, offset := outboxPageBounds(filter)
+	// whereClause comes from outboxFilterClause, which only ever emits fixed
+	// column names and $N placeholders. Every value travels in args.
+	// #nosec G201
 	dataQuery := fmt.Sprintf(
 		`SELECT id_outbox, COALESCE(type, 1), from_number, COALESCE(client_id, 0), destination, messages,
 		        status, priority, application, sendingDateTime, insertDateTime, table_id, file, error_count, msg_error

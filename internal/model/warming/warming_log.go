@@ -117,6 +117,9 @@ func GetAllWarmingLogs(roomID, status string, limit int, userID int64, isAdmin b
 	if err != nil {
 		return nil, err
 	}
+	// filter comes from warmingLogFilter, which only ever emits fixed column
+	// names and $N placeholders. Every value travels in args.
+	// #nosec G202
 	query += filter
 
 	rows, err := database.AppDB.Query(query, args...)
