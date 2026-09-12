@@ -117,6 +117,26 @@ func TestFormatPhoneNumber(t *testing.T) {
 			input:       "628123456789",
 			wantUser:    "628123456789",
 		},
+
+		// ── Foreign numbers keep their own country code ───────────────────────
+		{
+			name:        "TR config: Indonesian number unchanged",
+			countryCode: "90",
+			input:       "628123456789",
+			wantUser:    "628123456789",
+		},
+		{
+			name:        "ID config: Turkish number unchanged",
+			countryCode: "62",
+			input:       "905551234567",
+			wantUser:    "905551234567",
+		},
+		{
+			name:        "TR config: US number unchanged",
+			countryCode: "90",
+			input:       "+1 202 555 0134",
+			wantUser:    "12025550134",
+		},
 	}
 
 	for _, tt := range tests {

@@ -10,12 +10,18 @@ import (
 	"charon/config"
 )
 
+// maxLocalNumberLength is the longest a subscriber number can be without its
+// country code. A cleaned number longer than this already carries a country
+// code, so FormatPhoneNumber must not prepend another one.
+const maxLocalNumberLength = 10
+
 // FormatPhoneNumber converts a phone number string to a WhatsApp JID.
 //
 // If PHONE_COUNTRY_CODE is set (e.g. "90" for Turkey, "62" for Indonesia):
-//   - "0XXXXXXXXXX"  → "{cc}XXXXXXXXXX"  (strip leading 0, prepend country code)
-//   - "XXXXXXXXXX"   → "{cc}XXXXXXXXXX"  (no cc prefix detected, prepend country code)
-//   - "{cc}XXXXXXXX" → used as-is
+//   - "0XXXXXXXXXX"   → "{cc}XXXXXXXXXX"  (strip leading 0, prepend country code)
+//   - "XXXXXXXXXX"    → "{cc}XXXXXXXXXX"  (local length, prepend country code)
+//   - "{cc}XXXXXXXX"  → used as-is
+//   - "{other}XXXXXX" → used as-is (foreign number, longer than a local one)
 //
 // If PHONE_COUNTRY_CODE is empty, the number must already be in full international
 // format (E.164 without the +, e.g. "905551234567").
@@ -41,14 +47,12 @@ func FormatPhoneNumber(phone string) (types.JID, error) {
 		// Auto-convert: "0XXXXXXXXX" → "{cc}XXXXXXXXX"
 		if strings.HasPrefix(cleaned, "0") {
 			cleaned = cc + cleaned[1:]
-		} else if !strings.HasPrefix(cleaned, cc) {
+		} else if !strings.HasPrefix(cleaned, cc) && len(cleaned) <= maxLocalNumberLength {
 			// Local format without leading 0 and without country code → prepend cc
 			cleaned = cc + cleaned
 		}
-
-		if !strings.HasPrefix(cleaned, cc) {
-			return types.JID{}, fmt.Errorf("phone number must start with %s (country code). Example: %sXXXXXXXXXX", cc, cc)
-		}
+		// A longer number that does not start with cc belongs to another country.
+		// Keep it as typed, so sending abroad works.
 	}
 
 	// E.164 length: 7–15 digits (country code included)
@@ -68,8 +72,11 @@ func FormatPhoneNumber(phone string) (types.JID, error) {
 //
 // Numbers that trigger skipping:
 //   - Numbers with a leading 0 (local format, may not resolve correctly)
-//   - Numbers that don't start with the configured country code (local format without cc)
+//   - Numbers of local length that don't start with the configured country code
 //   - Numbers shorter than 10 digits
+//
+// A longer number without the configured country code is a foreign number, so
+// it keeps the registration check.
 func ShouldSkipValidation(phone string) bool {
 	if !config.Allow9DigitPhoneNumber {
 		return false
@@ -84,7 +91,7 @@ func ShouldSkipValidation(phone string) bool {
 
 	// Local format without country code prefix
 	cc := config.PhoneCountryCode
-	if cc != "" && !strings.HasPrefix(cleaned, cc) {
+	if cc != "" && !strings.HasPrefix(cleaned, cc) && len(cleaned) <= maxLocalNumberLength {
 		return true
 	}
 
