@@ -14,7 +14,9 @@ import {
   X,
   CheckCircle,
 } from "lucide-react"
+import { PhoneInput } from "../../components/ui/PhoneInput"
 import api from "../../lib/api"
+import { apiFailure, isInvalidPhone } from "../../lib/apiError"
 import type { ApiResponse, Instance, Contact } from "../../lib/types"
 import toast from "react-hot-toast"
 
@@ -36,6 +38,7 @@ export function ContactsPage() {
   const [checkPhone, setCheckPhone] = useState("")
   const [checkResult, setCheckResult] = useState<{ isRegistered: boolean; jid: string } | null>(null)
   const [checking, setChecking] = useState(false)
+  const [checkError, setCheckError] = useState("")
 
   useEffect(() => {
     const fetch = async () => {
@@ -94,11 +97,17 @@ export function ContactsPage() {
     if (!checkPhone || !selectedInstance) return
     setChecking(true)
     setCheckResult(null)
+    setCheckError("")
     try {
       const res = await api.post<ApiResponse<{ isRegistered: boolean; jid: string }>>(`/api/check/${selectedInstance}`, { phone: checkPhone })
       if (res.data.success && res.data.data) setCheckResult(res.data.data)
       else toast.error(res.data.message)
-    } catch { toast.error("Check failed") } finally { setChecking(false) }
+    } catch (err) {
+      // A rejected number is a field-level problem, so it is shown inline.
+      const failure = apiFailure(err, "Check failed")
+      if (isInvalidPhone(failure)) setCheckError(failure.message)
+      else toast.error(failure.message)
+    } finally { setChecking(false) }
   }
 
   const totalPages = Math.ceil(total / limit)
@@ -147,8 +156,8 @@ export function ContactsPage() {
           <div className="flex gap-2 items-end">
             <div className="flex-1">
               <label className="text-[10px] text-cyber-green-dim uppercase tracking-wider block mb-1.5"><CheckCircle size={10} className="inline mr-1" /> Number Check</label>
-              <input value={checkPhone} onChange={(e) => setCheckPhone(e.target.value)} placeholder="905xxxxxxxxxx"
-                className="w-full bg-bg-input border border-border text-cyber-green px-3 py-2 text-xs font-mono focus:outline-none focus:border-cyber-green/50" />
+              <PhoneInput size="sm" value={checkPhone} error={checkError}
+                onChange={(value) => { setCheckPhone(value); setCheckError("") }} />
             </div>
             <Button size="sm" onClick={handleCheck} loading={checking} disabled={!checkPhone || !selectedInstance}>Check</Button>
           </div>

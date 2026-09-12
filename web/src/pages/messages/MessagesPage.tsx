@@ -3,6 +3,7 @@ import { Card } from "../../components/ui/Card"
 import { Button } from "../../components/ui/Button"
 import { Input } from "../../components/ui/Input"
 import { Badge } from "../../components/ui/Badge"
+import { PhoneInput } from "../../components/ui/PhoneInput"
 import {
   Send,
   Paperclip,
@@ -18,6 +19,7 @@ import {
   Image,
 } from "lucide-react"
 import api from "../../lib/api"
+import { apiFailure, isInvalidPhone } from "../../lib/apiError"
 import type { ApiResponse, Instance, Contact, Group, WsEvent } from "../../lib/types"
 import toast from "react-hot-toast"
 
@@ -59,6 +61,7 @@ export function MessagesPage() {
   const [checkPhone, setCheckPhone] = useState("")
   const [checkResult, setCheckResult] = useState<{ isRegistered: boolean; jid: string } | null>(null)
   const [checking, setChecking] = useState(false)
+  const [checkError, setCheckError] = useState("")
 
   // Media
   const [showMediaForm, setShowMediaForm] = useState(false)
@@ -104,7 +107,7 @@ export function MessagesPage() {
   const fetchGroupsByPhone = useCallback(async () => {
     if (!senderPhone) return
     try {
-      const res = await api.get<ApiResponse<{ groups: Group[]; total: number }>>(`/api/groups/by-number/${senderPhone}`)
+      const res = await api.get<ApiResponse<{ groups: Group[]; total: number }>>(`/api/groups/by-number/${encodeURIComponent(senderPhone)}`)
       if (res.data.success && res.data.data) {
         setGroups(res.data.data.groups || [])
       }
@@ -187,7 +190,7 @@ export function MessagesPage() {
     setSending(true)
     try {
       const endpoint = sendMode === "phone"
-        ? (isGroup ? `/api/send-group/by-number/${senderPhone}` : `/api/by-number/${senderPhone}`)
+        ? (isGroup ? `/api/send-group/by-number/${encodeURIComponent(senderPhone)}` : `/api/by-number/${encodeURIComponent(senderPhone)}`)
         : (isGroup ? `/api/send-group/${selectedInstance}` : `/api/send/${selectedInstance}`)
       const body = isGroup ? { groupJid: recipient, message } : { to: recipient, message }
       const res = await api.post<ApiResponse>(endpoint, body)
@@ -197,7 +200,7 @@ export function MessagesPage() {
         }])
         setMessage("")
       } else { toast.error(res.data.message) }
-    } catch { toast.error("Failed to send message") } finally { setSending(false) }
+    } catch (err) { toast.error(apiFailure(err, "Failed to send message").message) } finally { setSending(false) }
   }, [message, senderReady, recipient, isGroup, sendMode, senderPhone, selectedInstance])
 
   const handleSendMedia = async () => {
@@ -205,7 +208,7 @@ export function MessagesPage() {
     setSendingMedia(true)
     try {
       const endpoint = sendMode === "phone"
-        ? (isGroup ? `/api/send-group/by-number/${senderPhone}/media-url` : `/api/by-number/${senderPhone}/media-url`)
+        ? (isGroup ? `/api/send-group/by-number/${encodeURIComponent(senderPhone)}/media-url` : `/api/by-number/${encodeURIComponent(senderPhone)}/media-url`)
         : (isGroup ? `/api/send-group/${selectedInstance}/media-url` : `/api/send/${selectedInstance}/media-url`)
       const body = isGroup
         ? { groupJid: recipient, mediaUrl, caption: mediaCaption || undefined }
@@ -220,7 +223,7 @@ export function MessagesPage() {
         setMediaUrl("")
         setMediaCaption("")
       } else { toast.error(res.data.message) }
-    } catch { toast.error("Failed to send media") } finally { setSendingMedia(false) }
+    } catch (err) { toast.error(apiFailure(err, "Failed to send media").message) } finally { setSendingMedia(false) }
   }
 
   const handleSendMediaFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -232,7 +235,7 @@ export function MessagesPage() {
     formData.append(isGroup ? "groupJid" : "to", recipient)
     try {
       const endpoint = sendMode === "phone"
-        ? (isGroup ? `/api/send-group/by-number/${senderPhone}/media` : `/api/by-number/${senderPhone}/media-file`)
+        ? (isGroup ? `/api/send-group/by-number/${encodeURIComponent(senderPhone)}/media` : `/api/by-number/${encodeURIComponent(senderPhone)}/media-file`)
         : (isGroup ? `/api/send-group/${selectedInstance}/media` : `/api/send/${selectedInstance}/media`)
       const res = await api.post<ApiResponse>(endpoint, formData, { headers: { "Content-Type": "multipart/form-data" } })
       if (res.data.success) {
@@ -241,18 +244,24 @@ export function MessagesPage() {
           id: crypto.randomUUID(), from: "me", message: `[File] ${file.name}`, fromMe: true, timestamp: Math.floor(Date.now() / 1000),
         }])
       } else { toast.error(res.data.message) }
-    } catch { toast.error("Failed to send media") } finally { setSendingMedia(false); e.target.value = "" }
+    } catch (err) { toast.error(apiFailure(err, "Failed to send media").message) } finally { setSendingMedia(false); e.target.value = "" }
   }
 
   const handleCheckNumber = async () => {
     if (!checkPhone || !selectedInstance) return
     setChecking(true)
     setCheckResult(null)
+    setCheckError("")
     try {
       const res = await api.post<ApiResponse<{ isRegistered: boolean; jid: string }>>(`/api/check/${selectedInstance}`, { phone: checkPhone })
       if (res.data.success && res.data.data) { setCheckResult(res.data.data) }
       else { toast.error(res.data.message) }
-    } catch { toast.error("Check failed") } finally { setChecking(false) }
+    } catch (err) {
+      // A rejected number is a field-level problem, so it is shown inline.
+      const failure = apiFailure(err, "Check failed")
+      if (isInvalidPhone(failure)) setCheckError(failure.message)
+      else toast.error(failure.message)
+    } finally { setChecking(false) }
   }
 
   const tabClass = (t: LeftTab) =>
@@ -299,9 +308,8 @@ export function MessagesPage() {
             <label className="text-[10px] text-cyber-green-dim uppercase tracking-wider block mb-1.5">
               <Phone size={10} className="inline mr-1" /> Sender Phone Number
             </label>
-            <input value={senderPhone} onChange={(e) => { setSenderPhone(e.target.value); setMessages([]); setRecipient(""); setRecipientName("") }}
-              placeholder="905xxxxxxxxx"
-              className="w-full bg-bg-input border border-border text-cyber-green px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-cyber-green/50" />
+            <PhoneInput size="sm" value={senderPhone}
+              onChange={(value) => { setSenderPhone(value); setMessages([]); setRecipient(""); setRecipientName("") }} />
           </Card>
         )}
 
@@ -370,9 +378,9 @@ export function MessagesPage() {
             {/* Check Tab */}
             {leftTab === "check" && (
               <div className="space-y-2 p-1">
-                <div className="flex gap-1.5">
-                  <input value={checkPhone} onChange={(e) => setCheckPhone(e.target.value)} placeholder="905xxxxxxxxxx"
-                    className="flex-1 bg-bg-input border border-border text-cyber-green px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-cyber-green/50" />
+                <div className="flex gap-1.5 items-start">
+                  <PhoneInput size="sm" className="flex-1 min-w-0" value={checkPhone} error={checkError}
+                    onChange={(value) => { setCheckPhone(value); setCheckError("") }} />
                   <Button size="sm" onClick={handleCheckNumber} loading={checking} disabled={!checkPhone}><CheckCircle size={12} /></Button>
                 </div>
                 {checkResult && (
@@ -420,11 +428,17 @@ export function MessagesPage() {
             {leftTab === "manual" && (
               <Card className="p-3 space-y-2">
                 <label className="text-[10px] text-cyber-green-dim uppercase tracking-wider block">Recipient</label>
-                <input value={recipient} onChange={(e) => { setRecipient(e.target.value); setRecipientName("") }}
-                  placeholder="905xxxxxxxxx or group JID"
-                  className="w-full bg-bg-input border border-border text-cyber-green px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-cyber-green/50" />
+                {/* A group JID is not a phone number, so it keeps the raw input. */}
+                {isGroup ? (
+                  <input value={recipient} onChange={(e) => { setRecipient(e.target.value); setRecipientName("") }}
+                    placeholder="120363xxxxxxxxxxxx@g.us"
+                    className="w-full bg-bg-input border border-border text-cyber-green px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-cyber-green/50" />
+                ) : (
+                  <PhoneInput size="sm" value={recipient}
+                    onChange={(value) => { setRecipient(value); setRecipientName("") }} />
+                )}
                 <label className="flex items-center gap-2 text-[10px] text-cyber-green cursor-pointer">
-                  <input type="checkbox" checked={isGroup} onChange={(e) => setIsGroup(e.target.checked)} className="accent-cyber-green" />
+                  <input type="checkbox" checked={isGroup} onChange={(e) => { setIsGroup(e.target.checked); setRecipient(""); setRecipientName("") }} className="accent-cyber-green" />
                   Group Message
                 </label>
               </Card>

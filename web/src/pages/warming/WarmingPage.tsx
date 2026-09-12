@@ -3,6 +3,7 @@ import { Card } from "../../components/ui/Card"
 import { Button } from "../../components/ui/Button"
 import { Badge } from "../../components/ui/Badge"
 import { Input } from "../../components/ui/Input"
+import { PhoneInput } from "../../components/ui/PhoneInput"
 import {
   Flame, Plus, Trash2, Play, Pause, Square, RotateCcw, ScrollText,
   FileText, RefreshCw, X, ChevronDown, ChevronRight, ArrowUp, ArrowDown,
@@ -380,7 +381,7 @@ export function WarmingPage() {
                   )}
                   {roomForm.roomType === "HUMAN_VS_BOT" && (
                     <>
-                      <Input label="Whitelisted Number" value={roomForm.whitelistedNumber || ""} onChange={(e) => setRoomForm({ ...roomForm, whitelistedNumber: e.target.value })} placeholder="905xxxxxxxxxx" />
+                      <PhoneInput label="Whitelisted Number" value={roomForm.whitelistedNumber || ""} onChange={(value) => setRoomForm({ ...roomForm, whitelistedNumber: value })} />
                       <div className="grid grid-cols-2 gap-3">
                         <Input label="Reply Delay Min (s)" type="number" value={roomForm.replyDelayMin || 10} onChange={(e) => setRoomForm({ ...roomForm, replyDelayMin: parseInt(e.target.value) || 0 })} />
                         <Input label="Reply Delay Max (s)" type="number" value={roomForm.replyDelayMax || 60} onChange={(e) => setRoomForm({ ...roomForm, replyDelayMax: parseInt(e.target.value) || 0 })} />
