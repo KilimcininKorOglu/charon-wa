@@ -113,6 +113,49 @@ available.
   safe — the `is_connected` flag will briefly report stale values until each
   WhatsApp client reconnects and updates its row.
 
+## Rolling Back the Phone Number Backfill
+
+The one-time phone normalisation (`phone_backfill_v1`) records the old and new
+value of every row it rewrote in `phone_backfill_backup_v1`. The table lives in
+each pool it touched, so run the statements for `outbox` against
+`OUTBOX_DATABASE_URL` when that points at a separate database.
+
+Inspect first:
+
+```sql
+SELECT table_name, count(*) FROM phone_backfill_backup_v1 GROUP BY 1;
+```
+
+Restore, one statement per table. The `AND` guard leaves any row that was
+changed again after the backfill alone:
+
+```sql
+UPDATE instances t SET phone_number = b.old_value
+FROM phone_backfill_backup_v1 b
+WHERE b.table_name = 'instances' AND t.id::text = b.row_id
+  AND t.phone_number = b.new_value;
+
+UPDATE warming_rooms t SET whitelisted_number = b.old_value
+FROM phone_backfill_backup_v1 b
+WHERE b.table_name = 'warming_rooms' AND t.id::text = b.row_id
+  AND t.whitelisted_number = b.new_value;
+
+UPDATE outbox t SET destination = b.old_value
+FROM phone_backfill_backup_v1 b
+WHERE b.table_name = 'outbox' AND t.id_outbox::text = b.row_id
+  AND t.destination = b.new_value;
+```
+
+Then clear the marker, so a later startup can run the backfill again:
+
+```sql
+DELETE FROM system_settings WHERE key = 'phone_backfill_v1';
+```
+
+Rolling back the data without also rolling back the application leaves the
+stored numbers in a shape the current code does not write. Do it only together
+with a deploy of the previous release.
+
 ## Post-Restore Validation
 
 1. `curl -H "Cookie: session=<admin-session>" $BASEURL/api/admin/dashboard`

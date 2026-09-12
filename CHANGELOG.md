@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Phone numbers are parsed and validated with Google libphonenumber, per country, on both the backend (`github.com/nyaruka/phonenumbers/v2`) and the frontend (`libphonenumber-js/max`), so the project works for every country instead of one
+- `PHONE_DEFAULT_REGION` (ISO 3166-1 alpha-2) replaces `PHONE_COUNTRY_CODE`, which is still read and mapped to a region with a deprecation warning
+- `SKIP_WHATSAPP_REGISTRATION_CHECK` replaces `ALLOW_9_DIGIT_PHONE_NUMBER`, which is still read as an alias
+- `GET /api/system/phone-config` reports the default region, so the frontend validates exactly as the backend does
+- One-time backfill that normalises `instances.phone_number`, `warming_rooms.whitelisted_number` and pending `outbox.destination`, with the old values recorded in `phone_backfill_backup_v1` and rollback statements in `docs/DR.md`
+- `PhoneInput` component with a country selector on the messages, contacts and warming pages
+
+### Fixed
+- The blast outbox worker rejected every destination that did not start with `62`, so a deployment configured for any other country could not send at all
+- `warming_rooms.whitelisted_number` was normalised on create but not on update, which silently broke auto-reply matching after an edit, and its normaliser was hardcoded to Indonesia
+- The international prefix was mishandled: `0090 555 123 45 67` became `900090555...`
+- A ten-digit foreign number was treated as a local one and given the wrong country code
+- A `:phoneNumber` route param that was not in canonical form returned a misleading 403 instead of resolving to the caller's own instance
+- Frontend call sites discarded the server's error message and showed their own generic text instead
+
 ## [1.3.2] - 2026-04-17
 
 ### Changed

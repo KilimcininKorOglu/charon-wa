@@ -4852,6 +4852,61 @@
         "operationId": "postMeAvatar"
       }
     },
+    "/api/system/phone-config": {
+      "get": {
+        "summary": "Phone Config",
+        "deprecated": false,
+        "description": "Returns the default region the backend parses phone numbers with, so a client can validate a number exactly as the server will. Empty means every number must be in full international format with a leading +.",
+        "tags": [
+          "System Profile"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "defaultRegion": {
+                          "type": "string",
+                          "description": "ISO 3166-1 alpha-2 region code, or an empty string"
+                        }
+                      },
+                      "required": ["defaultRegion"]
+                    }
+                  },
+                  "required": ["success", "message", "data"]
+                },
+                "example": {
+                  "success": true,
+                  "message": "Phone configuration retrieved",
+                  "data": {
+                    "defaultRegion": "TR"
+                  }
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "operationId": "getSystemPhoneConfig"
+      }
+    },
     "/api/system/identity": {
       "post": {
         "summary": "Identity",
@@ -6124,9 +6179,9 @@
                   "message": "Phone number checked",
                   "data": {
                     "isRegistered": false,
-                    "jid": "905545@s.whatsapp.net",
-                    "note": "Number is not registered. Message sending will be blocked unless ALLOW_9_DIGIT_PHONE_NUMBER=true is set",
-                    "phone": "905545",
+                    "jid": "905551234567@s.whatsapp.net",
+                    "note": "Number is not registered. Message sending will be blocked unless SKIP_WHATSAPP_REGISTRATION_CHECK=true is set",
+                    "phone": "905551234567",
                     "willSkipValidation": false
                   }
                 }

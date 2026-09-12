@@ -418,8 +418,10 @@ Configure these in your `.env` file.
 | `CHARON_ENABLE_WEBHOOK`                | Enable global incoming message webhooks                                   | `false` | `true`  |
 | `CHARON_TYPING_DELAY_MIN`              | Minimum typing simulation delay (seconds)                                 | `1`     | `2`     |
 | `CHARON_TYPING_DELAY_MAX`              | Maximum typing simulation delay (seconds)                                 | `3`     | `5`     |
-| `PHONE_COUNTRY_CODE`                   | Country code for phone number formatting                                  | --      | `90`    |
-| `ALLOW_9_DIGIT_PHONE_NUMBER`           | Skip IsOnWhatsApp check for leading-0, no-cc-prefix, or <10 digit numbers | `false` | `true`  |
+| `PHONE_DEFAULT_REGION`                 | Default region (ISO 3166-1 alpha-2) for numbers typed without a country code | --      | `TR`    |
+| `PHONE_COUNTRY_CODE`                   | **Deprecated.** Calling code, mapped to a region when `PHONE_DEFAULT_REGION` is empty | --      | `90`    |
+| `SKIP_WHATSAPP_REGISTRATION_CHECK`     | Skip the `IsOnWhatsApp` check before sending                               | `false` | `true`  |
+| `ALLOW_9_DIGIT_PHONE_NUMBER`           | **Deprecated.** Alias of `SKIP_WHATSAPP_REGISTRATION_CHECK`               | `false` | `true`  |
 
 ### Session Configuration
 
@@ -440,16 +442,46 @@ Avatar output format is always WebP (hardcoded in `GenerateSecureFilename`).
 
 ### Phone Number Format
 
-Phone numbers are automatically formatted using the `PHONE_COUNTRY_CODE` environment variable:
+Every phone number is parsed and validated with Google libphonenumber
+(`github.com/nyaruka/phonenumbers/v2` on the backend, `libphonenumber-js/max` in
+the frontend), against the numbering plan of the country it belongs to. Every
+country works; `PHONE_DEFAULT_REGION` only decides how a number typed without a
+country code is read.
 
-| Format                       | Conversion                                                          |
-|:-----------------------------|:--------------------------------------------------------------------|
-| `0XXXXXXXXX`                 | `PHONE_COUNTRY_CODE` prefix prepended (e.g. `0555...` → `90555...`) |
-| `XXXXXXXXX` (no prefix, 10 digits or fewer) | `PHONE_COUNTRY_CODE` prefix prepended                |
-| Country code already present | Passed through unchanged                                            |
-| More than 10 digits with another country code | Passed through unchanged, so foreign numbers still work |
+Numbers are stored and compared as **bare E.164 digits with no leading `+`**,
+which is the shape a WhatsApp JID carries.
 
-If `PHONE_COUNTRY_CODE` is empty, full international format is required with no auto-conversion.
+| Input (with `PHONE_DEFAULT_REGION=TR`) | Result         | Why                                              |
+|:---------------------------------------|:---------------|:-------------------------------------------------|
+| `0555 123 45 67`                        | `905551234567` | National number of the default region            |
+| `5551234567`                            | `905551234567` | Same, without the trunk prefix                   |
+| `+1 202 555 0134`                       | `12025550134`  | `+` means international, whatever the region is  |
+| `0090 555 123 45 67`                    | `905551234567` | `00` is the international prefix                 |
+| `628123456789`                          | `628123456789` | A bare run of 11+ digits is retried as international |
+| `2025550134`                            | rejected       | Not a valid Turkish number, and too short to retry as international |
+
+If `PHONE_DEFAULT_REGION` is empty, every number must be in full international
+format with a leading `+`.
+
+`GET /api/system/phone-config` returns `{"defaultRegion":"TR"}` so the frontend
+validates exactly as the backend does.
+
+**Both binaries read these variables.** The worker normalises destinations
+itself, so `PHONE_DEFAULT_REGION` must be set on the worker service too.
+
+### Phone Number Backfill
+
+On first startup after this change the API rewrites stored numbers into their
+canonical form, once: `instances.phone_number`,
+`warming_rooms.whitelisted_number` and pending `outbox.destination` rows.
+
+- It claims the run with the `phone_backfill_v1` key in `system_settings`, so
+  several replicas cannot run it twice. Delete that row to run it again.
+- Old and new values are recorded in `phone_backfill_backup_v1`; see
+  [docs/DR.md](docs/DR.md) for the rollback statements.
+- Values that do not parse as a phone number (a LID, a group id) are left
+  untouched and logged.
+- Only pending outbox rows are touched. A sent or failed row is an audit record.
 
 ### Rate Limiting
 
