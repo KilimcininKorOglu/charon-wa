@@ -139,7 +139,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 
 | Component | Technology                                                   |
 |:----------|:-------------------------------------------------------------|
-| Language  | Go 1.26.2+                                                   |
+| Language  | Go 1.26.6+                                                   |
 | Framework | [Echo v4](https://echo.labstack.com/)                        |
 | WhatsApp  | [whatsmeow](https://github.com/tulir/whatsmeow)              |
 | Database  | PostgreSQL 13+                                               |
@@ -154,7 +154,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 
 ### Prerequisites
 
-- Go 1.26.2 or later
+- Go 1.26.6 or later
 - Node.js 22+ and npm (for frontend)
 - PostgreSQL 13 or later (the schema calls `gen_random_uuid()`, which is only built in from 13 onward)
 - Make (build tool)
@@ -166,8 +166,8 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 All build operations go through the Makefile:
 
 ```bash
-# Build both API server and worker (GOFLAGS=-mod=mod required if docker-data/go-mod exists locally)
-GOFLAGS=-mod=mod make build
+# Build both API server and worker
+make build
 
 # Build frontend
 cd web && npm install && npm run build
@@ -180,13 +180,12 @@ make lint
 
 # Clean build artifacts
 make clean
+
+# Cross-compile the Linux binaries the local dev containers run
+make dev-build
 ```
 
-`make lint` runs `go fmt ./...` and `go vet ./...` across the module. If a local `docker-data/go-mod` directory exists it also breaks these two commands, so fall back to:
-
-```bash
-gofmt -w $(git ls-files "*.go") && go vet . ./cmd/worker/... ./config/... ./database/... ./internal/...
-```
+`make lint` runs `go fmt ./...` and `go vet ./...` across the module.
 
 ### Run
 
@@ -292,12 +291,20 @@ Two separate Docker Compose files are provided:
 
 ### Local Development
 
+The host compiles the Go binaries and the containers only run them. Build first, then start the stack:
+
 ```bash
+# Cross-compile bin/charon_linux_arm64 and bin/worker_linux_arm64 (needs zig)
+make dev-build
+
 # Start all services (PostgreSQL + API + Worker + Web)
 docker compose -f docker-compose.local.yml up -d
 
 # View logs
 docker compose -f docker-compose.local.yml logs -f
+
+# Rebuild after a Go change, then restart api and worker
+make dev
 
 # Stop
 docker compose -f docker-compose.local.yml down
@@ -306,7 +313,7 @@ docker compose -f docker-compose.local.yml down
 | Service    | Host Port | Container Port | Description                |
 |:-----------|:----------|:---------------|:---------------------------|
 | `postgres` | 8322      | 5432           | PostgreSQL database        |
-| `api`      | 8320      | 2121           | Go API server (hot-reload) |
+| `api`      | 8320      | 2121           | Go API server (alpine, runs the host-built binary) |
 | `worker`   | --        | --             | Blast outbox worker        |
 | `web`      | 8321      | 5173           | Vite dev server (React UI) |
 
@@ -314,7 +321,7 @@ Open the UI at `http://localhost:8321`. The Vite dev server proxies `/api`, `/ws
 
 Container ports are unchanged: the API still listens on `PORT=2121` and PostgreSQL on 5432. Only the published host ports differ, so the stack does not collide with other local projects.
 
-All volumes bind-mount to `docker-data/` directory. The API server uses `air` for hot-reload during development.
+The `api` and `worker` services run on `alpine:3.21` and mount `./bin` read-only. They contain no Go toolchain, module cache or build cache. PostgreSQL data, uploads and the web `node_modules` bind-mount to `docker-data/`. Both services read `.env.docker`.
 
 ### Production (Coolify)
 
@@ -417,8 +424,9 @@ Phone numbers are automatically formatted using the `PHONE_COUNTRY_CODE` environ
 | Format                       | Conversion                                                          |
 |:-----------------------------|:--------------------------------------------------------------------|
 | `0XXXXXXXXX`                 | `PHONE_COUNTRY_CODE` prefix prepended (e.g. `0555...` → `90555...`) |
-| `XXXXXXXXX` (no prefix)      | `PHONE_COUNTRY_CODE` prefix prepended                               |
+| `XXXXXXXXX` (no prefix, 10 digits or fewer) | `PHONE_COUNTRY_CODE` prefix prepended                |
 | Country code already present | Passed through unchanged                                            |
+| More than 10 digits with another country code | Passed through unchanged, so foreign numbers still work |
 
 If `PHONE_COUNTRY_CODE` is empty, full international format is required with no auto-conversion.
 
