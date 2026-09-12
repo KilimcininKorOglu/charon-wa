@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,90 +17,72 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// UploadAvatar handles avatar upload
-// POST /api/me/avatar
-func UploadAvatar(c echo.Context) error {
-	// Get user from context
-	userClaims, ok := c.Get("user_claims").(*service.Claims)
-	if !ok {
-		return ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
-	}
-
-	// Get uploaded file
-	file, err := c.FormFile("avatar")
-	if err != nil {
-		return ErrorResponse(c, http.StatusBadRequest, "No file uploaded", "NO_FILE", err.Error())
-	}
-
-	// Validate file (basic validation)
+// readAvatarUpload validates the uploaded avatar and returns its compressed
+// WebP bytes. The returned error is an already-written ErrorResponse.
+func readAvatarUpload(c echo.Context, file *multipart.FileHeader, userID int64) ([]byte, error) {
 	if err := helper.ValidateImageFile(file); err != nil {
-		return ErrorResponse(c, http.StatusBadRequest, "File is not a valid image", "INVALID_FILE", err.Error())
+		return nil, ErrorResponse(c, http.StatusBadRequest, "File is not a valid image", "INVALID_FILE", err.Error())
 	}
 
-	// Open file
 	src, err := file.Open()
 	if err != nil {
-		return ErrorResponse(c, http.StatusInternalServerError, "Failed to open uploaded file", "FILE_OPEN_ERROR", err.Error())
+		return nil, ErrorResponse(c, http.StatusInternalServerError, "Failed to open uploaded file", "FILE_OPEN_ERROR", err.Error())
 	}
 	defer func() { _ = src.Close() }()
 
 	// Check magic bytes (file signature validation)
 	if err := helper.CheckMagicBytes(src); err != nil {
-		return ErrorResponse(c, http.StatusBadRequest, "File is not a valid image", "INVALID_FILE_SIGNATURE", err.Error())
+		return nil, ErrorResponse(c, http.StatusBadRequest, "File is not a valid image", "INVALID_FILE_SIGNATURE", err.Error())
 	}
 
-	// Process image: validate, compress, convert to WebP
-	log.Printf("📸 Processing avatar upload for user %d (original size: %d bytes)", userClaims.UserID, file.Size)
+	log.Printf("📸 Processing avatar upload for user %d (original size: %d bytes)", userID, file.Size)
 
 	compressedData, err := helper.CompressAndResize(src, file)
 	if err != nil {
 		log.Printf("❌ Image processing failed: %v", err)
-		return ErrorResponse(c, http.StatusBadRequest, "Image processing failed", "PROCESSING_FAILED", err.Error())
+		return nil, ErrorResponse(c, http.StatusBadRequest, "Image processing failed", "PROCESSING_FAILED", err.Error())
 	}
 
 	log.Printf("✅ Image compressed: %d bytes → %d bytes", file.Size, len(compressedData))
+	return compressedData, nil
+}
 
-	// Create user-specific directory
-	userDir := helper.GetUserUploadDir(userClaims.UserID)
-	if err := os.MkdirAll(userDir, 0750); err != nil {
-		return ErrorResponse(c, http.StatusInternalServerError, "Failed to create user directory", "DIRECTORY_ERROR", err.Error())
+// storeAvatar writes the avatar to the user's upload directory, overwriting any
+// previous one, and returns its path. The returned error is an already-written
+// ErrorResponse.
+func storeAvatar(c echo.Context, userID int64, data []byte) (string, error) {
+	if err := os.MkdirAll(helper.GetUserUploadDir(userID), 0750); err != nil {
+		return "", ErrorResponse(c, http.StatusInternalServerError, "Failed to create user directory", "DIRECTORY_ERROR", err.Error())
 	}
 
-	// Get file path (always overwrites existing avatar)
-	filePath := helper.GetUserAvatarPath(userClaims.UserID)
-	avatarURL := helper.GetUserAvatarURL(userClaims.UserID)
-
-	// Delete old avatar if exists (will be overwritten anyway, but good practice)
-	if _, err := os.Stat(filePath); err == nil {
-		log.Printf("🗑️ Overwriting existing avatar: %s", filePath)
+	filePath := helper.GetUserAvatarPath(userID)
+	if err := saveCompressedFile(filePath, data); err != nil {
+		return "", ErrorResponse(c, http.StatusInternalServerError, "Failed to save file", "SAVE_ERROR", err.Error())
 	}
+	return filePath, nil
+}
 
-	// Save compressed file
-	if err := saveCompressedFile(filePath, compressedData); err != nil {
-		return ErrorResponse(c, http.StatusInternalServerError, "Failed to save file", "SAVE_ERROR", err.Error())
-	}
-
-	// Get user for database update
-	user, err := model.GetUserByID(userClaims.UserID)
+// persistAvatarURL points the user record at the new avatar. A database failure
+// removes the just-written file so no orphan is left behind.
+func persistAvatarURL(c echo.Context, userID int64, avatarURL, filePath string) error {
+	user, err := model.GetUserByID(userID)
 	if err != nil {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to get user data", "DATABASE_ERROR", err.Error())
 	}
 
-	// Update user avatar_url in database
 	user.AvatarURL = sql.NullString{String: avatarURL, Valid: true}
-	err = model.UpdateUser(user)
-	if err != nil {
-		// Rollback: delete uploaded file. A failure here leaves an orphaned file
-		// on disk, so report it instead of dropping it.
+	if err := model.UpdateUser(user); err != nil {
 		if delErr := helper.DeleteFile(filePath); delErr != nil {
 			log.Printf("⚠️ Failed to remove orphaned avatar %s: %v", filepath.Base(filePath), delErr)
 		}
-
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to update user profile", "DATABASE_ERROR", err.Error())
 	}
+	return nil
+}
 
-	// Log upload to audit_logs
-	_ = model.LogAction(&model.AuditLog{
+// logAvatarUpload records the upload in audit_logs.
+func logAvatarUpload(c echo.Context, userClaims *service.Claims, file *multipart.FileHeader, filePath string, compressedSize int) {
+	err := model.LogAction(&model.AuditLog{
 		UserID:       sql.NullInt64{Int64: userClaims.UserID, Valid: true},
 		Action:       "avatar.upload",
 		ResourceType: sql.NullString{String: "user", Valid: true},
@@ -107,25 +90,54 @@ func UploadAvatar(c echo.Context) error {
 		Details: map[string]any{
 			"original_filename": file.Filename,
 			"original_size":     file.Size,
-			"compressed_size":   len(compressedData),
+			"compressed_size":   compressedSize,
 			"format":            "webp",
 			"saved_as":          filepath.Base(filePath),
 		},
 		IPAddress: sql.NullString{String: c.RealIP(), Valid: true},
 		UserAgent: sql.NullString{String: c.Request().UserAgent(), Valid: true},
 	})
+	if err != nil {
+		log.Printf("⚠️ Failed to write avatar upload audit log for user %d: %v", userClaims.UserID, err)
+	}
+}
 
+// UploadAvatar handles avatar upload
+// POST /api/me/avatar
+func UploadAvatar(c echo.Context) error {
+	userClaims, ok := c.Get("user_claims").(*service.Claims)
+	if !ok {
+		return ErrorResponse(c, http.StatusUnauthorized, "Unauthorized", "UNAUTHORIZED", "")
+	}
+
+	file, err := c.FormFile("avatar")
+	if err != nil {
+		return ErrorResponse(c, http.StatusBadRequest, "No file uploaded", "NO_FILE", err.Error())
+	}
+
+	compressedData, errResp := readAvatarUpload(c, file, userClaims.UserID)
+	if errResp != nil {
+		return errResp
+	}
+
+	filePath, errResp := storeAvatar(c, userClaims.UserID, compressedData)
+	if errResp != nil {
+		return errResp
+	}
+
+	avatarURL := helper.GetUserAvatarURL(userClaims.UserID)
+	if errResp := persistAvatarURL(c, userClaims.UserID, avatarURL, filePath); errResp != nil {
+		return errResp
+	}
+
+	logAvatarUpload(c, userClaims, file, filePath, len(compressedData))
 	log.Printf("✅ Avatar uploaded successfully for user %d: %s", userClaims.UserID, avatarURL)
 
-	return c.JSON(http.StatusOK, map[string]any{
-		"success": true,
-		"message": "Avatar uploaded successfully",
-		"data": map[string]any{
-			"avatar_url":      avatarURL,
-			"original_size":   file.Size,
-			"compressed_size": len(compressedData),
-			"format":          "webp",
-		},
+	return SuccessResponse(c, http.StatusOK, "Avatar uploaded successfully", map[string]any{
+		"avatar_url":      avatarURL,
+		"original_size":   file.Size,
+		"compressed_size": len(compressedData),
+		"format":          "webp",
 	})
 }
 
