@@ -1,106 +1,121 @@
 package helper
 
 import (
+	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 
+	"github.com/nyaruka/phonenumbers/v2"
 	"go.mau.fi/whatsmeow/types"
 
 	"charon/config"
 )
 
-// maxLocalNumberLength is the longest a subscriber number can be without its
-// country code. A cleaned number longer than this already carries a country
-// code, so FormatPhoneNumber must not prepend another one.
-const maxLocalNumberLength = 10
+// Sentinel errors returned by NormalizePhone. Callers should match them with
+// errors.Is instead of comparing message text.
+var (
+	ErrPhoneEmpty       = errors.New("phone number is empty")
+	ErrPhoneNoRegion    = errors.New("phone number has no country code and PHONE_DEFAULT_REGION is not set")
+	ErrPhoneUnparseable = errors.New("phone number could not be parsed")
+	ErrPhoneInvalid     = errors.New("phone number is not valid for its country")
+)
 
-// FormatPhoneNumber converts a phone number string to a WhatsApp JID.
+// NormalizePhone converts any operator-typed phone number into its canonical
+// bare E.164 form: digits only, no leading "+". For example "0555 123 45 67"
+// with PHONE_DEFAULT_REGION=TR becomes "905551234567".
 //
-// If PHONE_COUNTRY_CODE is set (e.g. "90" for Turkey, "62" for Indonesia):
-//   - "0XXXXXXXXXX"   → "{cc}XXXXXXXXXX"  (strip leading 0, prepend country code)
-//   - "XXXXXXXXXX"    → "{cc}XXXXXXXXXX"  (local length, prepend country code)
-//   - "{cc}XXXXXXXX"  → used as-is
-//   - "{other}XXXXXX" → used as-is (foreign number, longer than a local one)
+// A number that starts with "+" (or with the international prefix of the
+// default region, such as "00") is parsed as an international number, so
+// sending abroad works regardless of the configured region. A number without a
+// country code is parsed as a national number of PHONE_DEFAULT_REGION; when
+// that variable is empty, such a number is rejected with ErrPhoneNoRegion.
 //
-// If PHONE_COUNTRY_CODE is empty, the number must already be in full international
-// format (E.164 without the +, e.g. "905551234567").
+// Validity is decided by Google libphonenumber, per country, so every country's
+// own numbering plan applies. FIXED_LINE numbers are accepted, because WhatsApp
+// Business runs on landlines.
 //
-// Final length must be 7–15 digits per ITU-T E.164.
-func FormatPhoneNumber(phone string) (types.JID, error) {
-	// Only accept digits, +, -, (, ), and spaces
-	validFormat := regexp.MustCompile(`^[\d\s\+\-\(\)]+$`)
-	if !validFormat.MatchString(phone) {
-		return types.JID{}, fmt.Errorf("invalid phone number format: contains invalid characters")
+// The bare form (no "+") is deliberate: WhatsApp JIDs carry the number in
+// exactly that shape, so a stored value compares equal to an incoming
+// message's Sender.User.
+func NormalizePhone(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", ErrPhoneEmpty
 	}
 
-	// Strip everything except digits
-	cleaned := regexp.MustCompile(`[^\d]`).ReplaceAllString(phone, "")
-
-	if len(cleaned) < 7 {
-		return types.JID{}, fmt.Errorf("phone number too short")
+	region := config.PhoneDefaultRegion
+	if region == "" && !strings.HasPrefix(trimmed, "+") {
+		return "", ErrPhoneNoRegion
 	}
 
-	cc := config.PhoneCountryCode
+	num, err := phonenumbers.Parse(trimmed, region)
+	if err == nil && phonenumbers.IsValidNumber(num) {
+		return bareE164(num), nil
+	}
 
-	if cc != "" {
-		// Auto-convert: "0XXXXXXXXX" → "{cc}XXXXXXXXX"
-		if strings.HasPrefix(cleaned, "0") {
-			cleaned = cc + cleaned[1:]
-		} else if !strings.HasPrefix(cleaned, cc) && len(cleaned) <= maxLocalNumberLength {
-			// Local format without leading 0 and without country code → prepend cc
-			cleaned = cc + cleaned
+	if retry, ok := parseAsInternational(trimmed, region); ok {
+		return bareE164(retry), nil
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrPhoneUnparseable, err)
+	}
+	return "", ErrPhoneInvalid
+}
+
+// minBareInternationalLength is the shortest digit run that may be retried as a
+// full international number. Below it the retry would start guessing: a short
+// national number of the default region can accidentally read as a valid
+// foreign one.
+const minBareInternationalLength = 11
+
+// parseAsInternational retries a digits-only number as a full international
+// number, for the case where an operator (or an upstream system) typed a
+// foreign number without its leading "+". It only runs after the national parse
+// has already failed, so a number that is valid in the default region always
+// wins.
+func parseAsInternational(trimmed, region string) (*phonenumbers.PhoneNumber, bool) {
+	if region == "" || len(trimmed) < minBareInternationalLength {
+		return nil, false
+	}
+	for _, r := range trimmed {
+		if r < '0' || r > '9' {
+			return nil, false
 		}
-		// A longer number that does not start with cc belongs to another country.
-		// Keep it as typed, so sending abroad works.
 	}
 
-	// E.164 length: 7–15 digits (country code included)
-	if len(cleaned) < 7 || len(cleaned) > 15 {
-		return types.JID{}, fmt.Errorf("invalid phone number length (must be 7–15 digits in E.164 format)")
+	num, err := phonenumbers.Parse("+"+trimmed, "")
+	if err != nil || !phonenumbers.IsValidNumber(num) {
+		return nil, false
+	}
+	return num, true
+}
+
+func bareE164(num *phonenumbers.PhoneNumber) string {
+	return strings.TrimPrefix(phonenumbers.Format(num, phonenumbers.E164), "+")
+}
+
+// FormatPhoneNumber normalises a phone number and wraps it in a WhatsApp user
+// JID. It is the JID-shaped form of NormalizePhone.
+func FormatPhoneNumber(phone string) (types.JID, error) {
+	normalized, err := NormalizePhone(phone)
+	if err != nil {
+		return types.JID{}, err
 	}
 
 	return types.JID{
-		User:   cleaned,
+		User:   normalized,
 		Server: types.DefaultUserServer,
 	}, nil
 }
 
-// ShouldSkipValidation reports whether the IsOnWhatsApp registration check should
-// be skipped for this phone number. Skipping is only possible when the
-// ALLOW_9_DIGIT_PHONE_NUMBER environment variable is set to "true".
-//
-// Numbers that trigger skipping:
-//   - Numbers with a leading 0 (local format, may not resolve correctly)
-//   - Numbers of local length that don't start with the configured country code
-//   - Numbers shorter than 10 digits
-//
-// A longer number without the configured country code is a foreign number, so
-// it keeps the registration check.
-func ShouldSkipValidation(phone string) bool {
-	if !config.SkipWhatsAppRegistrationCheck {
-		return false
-	}
-
-	cleaned := regexp.MustCompile(`[^\d]`).ReplaceAllString(phone, "")
-
-	// Local format with leading 0
-	if strings.HasPrefix(cleaned, "0") {
-		return true
-	}
-
-	// Local format without country code prefix
-	cc := config.PhoneCountryCode
-	if cc != "" && !strings.HasPrefix(cleaned, cc) && len(cleaned) <= maxLocalNumberLength {
-		return true
-	}
-
-	// Genuinely short number
-	if len(cleaned) < 10 {
-		return true
-	}
-
-	return false
+// SkipWhatsAppRegistrationCheck reports whether the IsOnWhatsApp registration
+// check should be skipped. It is a deployment-wide switch
+// (SKIP_WHATSAPP_REGISTRATION_CHECK), not a per-number decision: now that every
+// number is validated against its own country's numbering plan, the old
+// per-number heuristic has nothing left to guess.
+func SkipWhatsAppRegistrationCheck() bool {
+	return config.SkipWhatsAppRegistrationCheck
 }
 
 // ExtractPhoneFromJID extracts the phone number from a WhatsApp JID string.

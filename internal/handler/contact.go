@@ -58,13 +58,12 @@ func CheckNumber(c echo.Context) error {
 		return ErrorResponse(c, 400, "Session is not connected", "NOT_CONNECTED", "")
 	}
 
-	// Import helper package for phone number formatting
 	recipient, err := helper.FormatPhoneNumber(req.Phone)
 	if err != nil {
 		return ErrorResponse(c, 400, "Invalid phone number", "INVALID_PHONE", err.Error())
 	}
 
-	willSkipValidation := helper.ShouldSkipValidation(req.Phone)
+	willSkipValidation := helper.SkipWhatsAppRegistrationCheck()
 
 	isRegistered, err := session.Client.IsOnWhatsApp(context.Background(), []string{recipient.User})
 	if err != nil {
@@ -76,7 +75,7 @@ func CheckNumber(c echo.Context) error {
 	}
 
 	return SuccessResponse(c, 200, "Phone number checked", map[string]any{
-		"phone":              req.Phone,
+		"phone":              recipient.User,
 		"isRegistered":       isRegistered[0].IsIn,
 		"jid":                isRegistered[0].JID.String(),
 		"willSkipValidation": willSkipValidation,
@@ -88,14 +87,14 @@ func CheckNumber(c echo.Context) error {
 func getValidationNote(isRegistered, willSkip bool) string {
 	if willSkip {
 		if isRegistered {
-			return "Number is registered. Validation will be skipped when sending (ALLOW_9_DIGIT_PHONE_NUMBER=true)"
+			return "Number is registered. The registration check is skipped when sending (SKIP_WHATSAPP_REGISTRATION_CHECK=true)"
 		}
-		return "Number appears unregistered, but validation will be skipped when sending (ALLOW_9_DIGIT_PHONE_NUMBER=true). Message will be attempted anyway."
+		return "Number appears unregistered, but the registration check is skipped when sending (SKIP_WHATSAPP_REGISTRATION_CHECK=true). Message will be attempted anyway."
 	}
 	if isRegistered {
-		return "Number is registered and will pass validation when sending"
+		return "Number is registered and will pass the registration check when sending"
 	}
-	return "Number is not registered. Message sending will be blocked unless ALLOW_9_DIGIT_PHONE_NUMBER=true is set"
+	return "Number is not registered. Message sending will be blocked unless SKIP_WHATSAPP_REGISTRATION_CHECK=true is set"
 }
 
 // GET /contacts/:instanceId/:jid

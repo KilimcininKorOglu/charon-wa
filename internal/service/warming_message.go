@@ -77,7 +77,7 @@ func SendWarmingMessageToPhone(senderInstanceID, phoneNumber, message string) (b
 func sendWarmingMessageInternal(senderSession *model.Session, recipientJID types.JID, message string) (bool, string) {
 	ctx := context.Background()
 
-	if !helper.ShouldSkipValidation(recipientJID.User) {
+	if !helper.SkipWhatsAppRegistrationCheck() {
 		isRegistered, err := senderSession.Client.IsOnWhatsApp(ctx, []string{recipientJID.User})
 		if err != nil {
 			return false, fmt.Sprintf("failed to verify receiver number: %v", err)

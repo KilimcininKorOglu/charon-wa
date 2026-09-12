@@ -1,10 +1,20 @@
 package helper
 
 import (
+	"errors"
 	"testing"
 
 	"charon/config"
 )
+
+// setRegion points the normaliser at one default region for the duration of a
+// single subtest.
+func setRegion(t *testing.T, region string) {
+	t.Helper()
+	previous := config.PhoneDefaultRegion
+	config.PhoneDefaultRegion = region
+	t.Cleanup(func() { config.PhoneDefaultRegion = previous })
+}
 
 func TestExtractPhoneFromJID(t *testing.T) {
 	tests := []struct {
@@ -12,6 +22,7 @@ func TestExtractPhoneFromJID(t *testing.T) {
 		expected string
 	}{
 		{"905551234567@s.whatsapp.net", "905551234567"},
+		{"905551234567:43@s.whatsapp.net", "905551234567"},
 		{"905123456789@s.whatsapp.net", "905123456789"},
 		{"905551234567", "905551234567"},
 		{"", ""},
@@ -25,140 +36,100 @@ func TestExtractPhoneFromJID(t *testing.T) {
 	}
 }
 
-func TestFormatPhoneNumber(t *testing.T) {
+func TestNormalizePhone(t *testing.T) {
 	tests := []struct {
-		name        string
-		countryCode string
-		input       string
-		wantUser    string
-		wantErr     bool
+		name    string
+		region  string
+		input   string
+		want    string
+		wantErr error
 	}{
-		// ── No country code set (full international format required) ─────────
-		{
-			name:        "no cc: full international Turkey",
-			countryCode: "",
-			input:       "905551234567",
-			wantUser:    "905551234567",
-		},
-		{
-			name:        "no cc: full international Indonesia",
-			countryCode: "",
-			input:       "905123456789",
-			wantUser:    "905123456789",
-		},
-		{
-			name:        "no cc: local format rejected",
-			countryCode: "",
-			input:       "05551234567",
-			wantErr:     false, // "0" stripped, prepend "" → "5551234567", 10 digits — valid E.164
-			wantUser:    "05551234567",
-		},
+		// ── National numbers of the default region ───────────────────────────
+		{name: "TR trunk prefix", region: "TR", input: "05551234567", want: "905551234567"},
+		{name: "TR without trunk prefix", region: "TR", input: "5551234567", want: "905551234567"},
+		{name: "TR with separators", region: "TR", input: "0555 123 45 67", want: "905551234567"},
+		{name: "TR already international", region: "TR", input: "905551234567", want: "905551234567"},
+		{name: "TR fixed line accepted", region: "TR", input: "+90 212 345 6789", want: "902123456789"},
+		{name: "ID trunk prefix", region: "ID", input: "08123456789", want: "628123456789"},
 
-		// ── Turkey (90) ───────────────────────────────────────────────────────
-		{
-			name:        "TR: leading 0 converted",
-			countryCode: "90",
-			input:       "05551234567",
-			wantUser:    "905551234567",
-		},
-		{
-			name:        "TR: local without 0 converted",
-			countryCode: "90",
-			input:       "5551234567",
-			wantUser:    "905551234567",
-		},
-		{
-			name:        "TR: full international unchanged",
-			countryCode: "90",
-			input:       "905551234567",
-			wantUser:    "905551234567",
-		},
-		{
-			name:        "TR: with + prefix",
-			countryCode: "90",
-			input:       "+905551234567",
-			wantUser:    "905551234567",
-		},
-		{
-			name:        "TR: too short",
-			countryCode: "90",
-			input:       "905",
-			wantErr:     true,
-		},
-		{
-			name:        "TR: too long",
-			countryCode: "90",
-			input:       "9055512345678901234",
-			wantErr:     true,
-		},
-		{
-			name:        "TR: invalid characters",
-			countryCode: "90",
-			input:       "905abc1234567",
-			wantErr:     true,
-		},
+		// ── International escapes ────────────────────────────────────────────
+		{name: "IDD prefix resolves to the same number", region: "TR", input: "0090 555 123 45 67", want: "905551234567"},
+		{name: "IDD prefix to a foreign number", region: "TR", input: "00447911123456", want: "447911123456"},
+		{name: "plus prefix to a foreign number", region: "TR", input: "+1 202 555 0134", want: "12025550134"},
+		{name: "foreign number without a plus", region: "TR", input: "628123456789", want: "628123456789"},
 
-		// ── Indonesia (62) ────────────────────────────────────────────────────
-		{
-			name:        "ID: leading 0 converted",
-			countryCode: "62",
-			input:       "08123456789",
-			wantUser:    "628123456789",
-		},
-		{
-			name:        "ID: local without 0 converted",
-			countryCode: "62",
-			input:       "8123456789",
-			wantUser:    "628123456789",
-		},
-		{
-			name:        "ID: full international unchanged",
-			countryCode: "62",
-			input:       "628123456789",
-			wantUser:    "628123456789",
-		},
+		// ── Numbers that are not valid for their country ─────────────────────
+		{name: "foreign length is not a local number", region: "TR", input: "2025550134", wantErr: ErrPhoneInvalid},
+		{name: "unassigned TR prefix", region: "TR", input: "01111111111", wantErr: ErrPhoneInvalid},
+		{name: "too short", region: "TR", input: "905", wantErr: ErrPhoneInvalid},
+		{name: "too long", region: "TR", input: "9055512345678901234", wantErr: ErrPhoneInvalid},
+		{name: "letters", region: "TR", input: "905abc1234567", wantErr: ErrPhoneInvalid},
+		{name: "unassigned country code", region: "", input: "+9991234567", wantErr: ErrPhoneUnparseable},
 
-		// ── Foreign numbers keep their own country code ───────────────────────
-		{
-			name:        "TR config: Indonesian number unchanged",
-			countryCode: "90",
-			input:       "628123456789",
-			wantUser:    "628123456789",
-		},
-		{
-			name:        "ID config: Turkish number unchanged",
-			countryCode: "62",
-			input:       "905551234567",
-			wantUser:    "905551234567",
-		},
-		{
-			name:        "TR config: US number unchanged",
-			countryCode: "90",
-			input:       "+1 202 555 0134",
-			wantUser:    "12025550134",
-		},
+		// ── No default region: full international format only ────────────────
+		{name: "no region, plus prefix", region: "", input: "+905551234567", want: "905551234567"},
+		{name: "no region, bare digits rejected", region: "", input: "905551234567", wantErr: ErrPhoneNoRegion},
+		{name: "no region, local format rejected", region: "", input: "05551234567", wantErr: ErrPhoneNoRegion},
+
+		// ── Empty input ──────────────────────────────────────────────────────
+		{name: "empty", region: "TR", input: "", wantErr: ErrPhoneEmpty},
+		{name: "blank", region: "TR", input: "   ", wantErr: ErrPhoneEmpty},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config.PhoneCountryCode = tt.countryCode
-			jid, err := FormatPhoneNumber(tt.input)
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("expected error, got JID user=%q", jid.User)
+			setRegion(t, tt.region)
+
+			got, err := NormalizePhone(tt.input)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("NormalizePhone(%q) error = %v, want %v", tt.input, err, tt.wantErr)
 				}
 				return
 			}
 			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
+				t.Fatalf("NormalizePhone(%q) unexpected error: %v", tt.input, err)
 			}
-			if tt.wantUser != "" && jid.User != tt.wantUser {
-				t.Errorf("User = %q, want %q", jid.User, tt.wantUser)
+			if got != tt.want {
+				t.Errorf("NormalizePhone(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
+}
 
-	// Reset
-	config.PhoneCountryCode = ""
+func TestNormalizePhoneIsIdempotent(t *testing.T) {
+	setRegion(t, "TR")
+
+	first, err := NormalizePhone("0555 123 45 67")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	second, err := NormalizePhone(first)
+	if err != nil {
+		t.Fatalf("unexpected error on the second pass: %v", err)
+	}
+	if second != first {
+		t.Errorf("second pass = %q, want %q", second, first)
+	}
+}
+
+func TestFormatPhoneNumber(t *testing.T) {
+	setRegion(t, "TR")
+
+	jid, err := FormatPhoneNumber("0555 123 45 67")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if jid.User != "905551234567" {
+		t.Errorf("User = %q, want %q", jid.User, "905551234567")
+	}
+	if jid.Server != "s.whatsapp.net" {
+		t.Errorf("Server = %q, want %q", jid.Server, "s.whatsapp.net")
+	}
+
+	if _, err := FormatPhoneNumber("2025550134"); !errors.Is(err, ErrPhoneInvalid) {
+		t.Errorf("error = %v, want %v", err, ErrPhoneInvalid)
+	}
 }

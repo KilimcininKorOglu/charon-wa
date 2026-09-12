@@ -38,16 +38,15 @@ func resolveSenderInstance(c echo.Context, phoneNumber string) (*model.Instance,
 }
 
 // resolveRecipient normalizes a destination number and confirms it is on
-// WhatsApp. The check is skipped for local-format numbers when
-// ALLOW_9_DIGIT_PHONE_NUMBER is set. The second result is a written
-// ErrorResponse for the caller to propagate.
+// WhatsApp. The check is skipped when SKIP_WHATSAPP_REGISTRATION_CHECK is set.
+// The second result is a written ErrorResponse for the caller to propagate.
 func resolveRecipient(c echo.Context, session *model.Session, to string) (types.JID, error) {
 	recipient, err := helper.FormatPhoneNumber(to)
 	if err != nil {
 		return types.JID{}, ErrorResponse(c, 400, "Invalid phone number", "INVALID_PHONE", err.Error())
 	}
 
-	if helper.ShouldSkipValidation(to) {
+	if helper.SkipWhatsAppRegistrationCheck() {
 		return recipient, nil
 	}
 
