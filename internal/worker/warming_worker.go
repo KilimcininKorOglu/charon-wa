@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -66,54 +67,65 @@ func processActiveRooms(hub ws.RealtimePublisher) error {
 	return nil
 }
 
-func executeRoom(room warmingModel.WarmingRoom, hub ws.RealtimePublisher) error {
-	line, err := warmingModel.GetNextAvailableScriptLine(room.ScriptID, room.CurrentSequence)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			log.Printf("✅ Room %s: Script finished - all lines executed", room.Name)
+// finishRoom marks a room as FINISHED once its script has no remaining lines.
+func finishRoom(room warmingModel.WarmingRoom, hub ws.RealtimePublisher) error {
+	log.Printf("✅ Room %s: Script finished - all lines executed", room.Name)
 
-			if hub != nil {
-				finishedLine := warmingModel.WarmingScriptLine{
-					SequenceOrder: room.CurrentSequence,
-					ActorRole:     "SYSTEM",
-				}
-				publishWarmingMessageEvent(
-					hub,
-					room,
-					finishedLine,
-					room.SenderInstanceID,
-					room.ReceiverInstanceID,
-					"Script completed - all dialog sequences finished",
-					"FINISHED",
-					"",
-				)
-			}
-
-			return warmingModel.FinishRoom(room.ID)
+	if hub != nil {
+		finishedLine := warmingModel.WarmingScriptLine{
+			SequenceOrder: room.CurrentSequence,
+			ActorRole:     "SYSTEM",
 		}
-		return fmt.Errorf("failed to get script line: %w", err)
+		publishWarmingMessageEvent(
+			hub,
+			room,
+			finishedLine,
+			room.SenderInstanceID,
+			room.ReceiverInstanceID,
+			"Script completed - all dialog sequences finished",
+			"FINISHED",
+			"",
+		)
 	}
 
-	message := helper.RenderSpintax(line.MessageContent)
+	return warmingModel.FinishRoom(room.ID)
+}
 
-	var senderID, receiverID string
-	if line.ActorRole == "ACTOR_A" {
-		senderID = room.SenderInstanceID
-		receiverID = room.ReceiverInstanceID
-	} else {
-		senderID = room.ReceiverInstanceID
-		receiverID = room.SenderInstanceID
+// resolveActors maps the line's actor role onto the room's two instances.
+func resolveActors(room warmingModel.WarmingRoom, actorRole string) (string, string) {
+	if actorRole == "ACTOR_A" {
+		return room.SenderInstanceID, room.ReceiverInstanceID
+	}
+	return room.ReceiverInstanceID, room.SenderInstanceID
+}
+
+// isConnectionError reports whether the send failed because the sender session
+// is unusable, which must pause the room instead of retrying forever.
+func isConnectionError(errMsg string) bool {
+	errMsgLow := strings.ToLower(errMsg)
+	for _, marker := range []string{"not connected", "session not found", "not logged in"} {
+		if strings.Contains(errMsgLow, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// pauseRoom stops a room whose sender session is unusable.
+func pauseRoom(room warmingModel.WarmingRoom, line warmingModel.WarmingScriptLine, hub ws.RealtimePublisher, senderID, receiverID, errMsg string) {
+	log.Printf("⛔ Room %s PAUSED due to connection error: %s", room.Name, errMsg)
+
+	if hub != nil {
+		publishWarmingMessageEvent(hub, room, line, senderID, receiverID, "Room PAUSED: "+errMsg, "PAUSED", errMsg)
 	}
 
-	// Send WhatsApp message
-	success, errMsg := sendWhatsAppMessage(senderID, receiverID, message, room.SendRealMessage)
-
-	// Log execution
-	logStatus := "SUCCESS"
-	if !success {
-		logStatus = "FAILED"
+	if err := warmingModel.UpdateRoomStatus(room.ID.String(), "PAUSED", nil); err != nil {
+		log.Printf("⚠️ Failed to pause room %s: %v", room.Name, err)
 	}
+}
 
+// recordExecution writes the execution log and publishes the realtime event.
+func recordExecution(room warmingModel.WarmingRoom, line warmingModel.WarmingScriptLine, hub ws.RealtimePublisher, senderID, receiverID, message, logStatus, errMsg string) {
 	var userID int64
 	if room.CreatedBy.Valid {
 		userID = room.CreatedBy.Int64
@@ -123,46 +135,58 @@ func executeRoom(room warmingModel.WarmingRoom, hub ws.RealtimePublisher) error 
 		log.Printf("⚠️ Failed to create log: %v", err)
 	}
 
-	// Publish warming message event to WebSocket for real-time display
 	if hub != nil {
-		publishWarmingMessageEvent(hub, room, *line, senderID, receiverID, message, logStatus, errMsg)
+		publishWarmingMessageEvent(hub, room, line, senderID, receiverID, message, logStatus, errMsg)
 	}
+}
 
+// advanceRoom schedules the next run. A failed send keeps the current sequence
+// so the same line is retried.
+func advanceRoom(room warmingModel.WarmingRoom, line warmingModel.WarmingScriptLine, success bool, errMsg string) error {
 	nextRunAt := calculateNextRun(room.IntervalMinSeconds, room.IntervalMaxSeconds)
 
+	sequence := room.CurrentSequence
 	if success {
-		if err := warmingModel.UpdateRoomProgress(room.ID, line.SequenceOrder, nextRunAt); err != nil {
-			return fmt.Errorf("failed to update room: %w", err)
-		}
-		log.Printf("✅ Room %s: Sent message (sequence %d)", room.Name, line.SequenceOrder)
-	} else {
-		// Check for critical connection errors
-		errMsgLow := strings.ToLower(errMsg)
-		if strings.Contains(errMsgLow, "not connected") ||
-			strings.Contains(errMsgLow, "session not found") ||
-			strings.Contains(errMsgLow, "not logged in") {
-
-			log.Printf("⛔ Room %s PAUSED due to connection error: %s", room.Name, errMsg)
-
-			// Publish failure event with PAUSED status
-			if hub != nil {
-				publishWarmingMessageEvent(hub, room, *line, senderID, receiverID, "Room PAUSED: "+errMsg, "PAUSED", errMsg)
-			}
-
-			// Pause the room
-			if err := warmingModel.UpdateRoomStatus(room.ID.String(), "PAUSED", nil); err != nil {
-				log.Printf("⚠️ Failed to pause room %s: %v", room.Name, err)
-			}
-			return nil
-		}
-
-		if err := warmingModel.UpdateRoomProgress(room.ID, room.CurrentSequence, nextRunAt); err != nil {
-			return fmt.Errorf("failed to update room: %w", err)
-		}
-		log.Printf("❌ Room %s: Failed to send message - %s (will retry)", room.Name, errMsg)
+		sequence = line.SequenceOrder
+	}
+	if err := warmingModel.UpdateRoomProgress(room.ID, sequence, nextRunAt); err != nil {
+		return fmt.Errorf("failed to update room: %w", err)
 	}
 
+	if success {
+		log.Printf("✅ Room %s: Sent message (sequence %d)", room.Name, line.SequenceOrder)
+		return nil
+	}
+	log.Printf("❌ Room %s: Failed to send message - %s (will retry)", room.Name, errMsg)
 	return nil
+}
+
+func executeRoom(room warmingModel.WarmingRoom, hub ws.RealtimePublisher) error {
+	line, err := warmingModel.GetNextAvailableScriptLine(room.ScriptID, room.CurrentSequence)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return finishRoom(room, hub)
+		}
+		return fmt.Errorf("failed to get script line: %w", err)
+	}
+
+	message := helper.RenderSpintax(line.MessageContent)
+	senderID, receiverID := resolveActors(room, line.ActorRole)
+
+	success, errMsg := sendWhatsAppMessage(senderID, receiverID, message, room.SendRealMessage)
+
+	logStatus := "SUCCESS"
+	if !success {
+		logStatus = "FAILED"
+	}
+	recordExecution(room, *line, hub, senderID, receiverID, message, logStatus, errMsg)
+
+	if !success && isConnectionError(errMsg) {
+		pauseRoom(room, *line, hub, senderID, receiverID, errMsg)
+		return nil
+	}
+
+	return advanceRoom(room, *line, success, errMsg)
 }
 
 func sendWhatsAppMessage(senderID, receiverID, message string, sendReal bool) (bool, string) {
