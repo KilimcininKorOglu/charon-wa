@@ -78,7 +78,7 @@ func FormatPhoneNumber(phone string) (types.JID, error) {
 // A longer number without the configured country code is a foreign number, so
 // it keeps the registration check.
 func ShouldSkipValidation(phone string) bool {
-	if !config.Allow9DigitPhoneNumber {
+	if !config.SkipWhatsAppRegistrationCheck {
 		return false
 	}
 

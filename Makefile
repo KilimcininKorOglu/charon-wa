@@ -70,7 +70,7 @@ vet:
 	go vet ./...
 
 test:
-	go test ./internal/... -v -count=1
+	go test ./config/... ./internal/... -v -count=1
 
 lint: fmt vet
 

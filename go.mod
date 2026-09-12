@@ -11,6 +11,7 @@ require (
 	github.com/labstack/gommon v0.5.0
 	github.com/lib/pq v1.10.9
 	github.com/mat/besticon v3.12.0+incompatible
+	github.com/nyaruka/phonenumbers/v2 v2.0.12
 	github.com/vegidio/webp-go v0.0.0-20251220093554-d304ec2dc4e6
 	github.com/xuri/excelize/v2 v2.11.0
 	go.mau.fi/whatsmeow v0.0.0-20260116142645-06f473759141

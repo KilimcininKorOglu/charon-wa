@@ -9,6 +9,8 @@ import (
 
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+
+	"charon/config"
 )
 
 var (
@@ -69,14 +71,18 @@ func main() {
 		_ = godotenv.Load("../../.env")
 	}
 
-	// 2. Initialize database
+	// 2. Load the phone tunables, so the worker classifies a number exactly as
+	// the API does.
+	config.LoadPhoneConfig()
+
+	// 3. Initialize database
 	initDB()
 	defer func() { _ = ConfigDB.Close() }()
 	if OutboxDB != ConfigDB {
 		defer func() { _ = OutboxDB.Close() }()
 	}
 
-	// 3. Worker Configuration
+	// 4. Worker Configuration
 	apiBaseURL := os.Getenv("OUTBOX_API_BASEURL")
 	if apiBaseURL == "" {
 		port := os.Getenv("PORT")
@@ -91,14 +97,14 @@ func main() {
 		log.Fatal("WORKER_API_KEY is not set (create an admin API key via the web UI)")
 	}
 
-	// 4. Initialize API Client
+	// 5. Initialize API Client
 	client := NewCharonClient(apiBaseURL, apiKey)
 
-	// 5. Start Worker Manager
+	// 6. Start Worker Manager
 	manager := NewWorkerManager(client)
 	manager.Start()
 
-	// 6. Wait for termination signal
+	// 7. Wait for termination signal
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop

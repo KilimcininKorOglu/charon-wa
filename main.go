@@ -83,9 +83,6 @@ func loadFeatureFlags() {
 	// Cookie security flag — default true, only disable for plain http localhost dev.
 	config.CookieSecure = os.Getenv("COOKIE_SECURE") != "false"
 
-	// Phone validation fallback flag.
-	config.Allow9DigitPhoneNumber = os.Getenv("ALLOW_9_DIGIT_PHONE_NUMBER") == "true"
-
 	config.WarmingAutoReplyCooldown = helper.GetEnvAsPositiveInt("WARMING_AUTO_REPLY_COOLDOWN", 60)
 }
 
@@ -94,7 +91,7 @@ func loadFeatureFlags() {
 func loadMessagingConfig() {
 	config.TypingDelayMin = helper.GetEnvAsPositiveInt("CHARON_TYPING_DELAY_MIN", 0)
 	config.TypingDelayMax = helper.GetEnvAsPositiveInt("CHARON_TYPING_DELAY_MAX", 0)
-	config.PhoneCountryCode = strings.TrimSpace(os.Getenv("PHONE_COUNTRY_CODE"))
+	config.LoadPhoneConfig()
 }
 
 // loadAIConfig reads the AI provider settings and their defaults.
