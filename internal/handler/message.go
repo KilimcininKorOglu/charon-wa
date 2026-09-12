@@ -103,7 +103,7 @@ func SendMessageByNumber(c echo.Context) error {
 	return SuccessResponse(c, 200, "Message sent successfully", map[string]any{
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
-		"from":      phoneNumber, // sender number
+		"from":      inst.PhoneNumber.String, // canonical sender number
 		"to":        req.To,
 		"verified":  true,
 	})

@@ -147,7 +147,7 @@ func SendMediaURLByNumber(c echo.Context) error {
 	}
 
 	return SuccessResponse(c, 200, "Media sent successfully", map[string]any{
-		"from":      phoneNumber,
+		"from":      inst.PhoneNumber.String,
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"to":        req.To,
@@ -196,7 +196,7 @@ func SendMediaFileByNumber(c echo.Context) error {
 	}
 
 	return SuccessResponse(c, 200, "Media sent successfully", map[string]any{
-		"from":      phoneNumber,
+		"from":      inst.PhoneNumber.String,
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"to":        to,

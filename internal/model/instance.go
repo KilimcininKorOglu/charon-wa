@@ -2,6 +2,7 @@ package model
 
 import (
 	"charon/database"
+	"charon/internal/helper"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -67,8 +68,44 @@ type InstanceResp struct {
 
 var ErrNoActiveInstance = errors.New("no active instance for this phone number")
 
-// GetActiveInstanceByPhoneNumber returns the active (latest) instance for a given number.
+// GetActiveInstanceByPhoneNumber returns the active (latest) instance for a
+// given number. The number is looked up in its canonical form first, so a
+// caller may pass any format the operator typed: "0555 123 45 67" finds the
+// instance stored as "905551234567".
+//
+// The raw input is tried afterwards, because a row written before the
+// normalisation backfill, or a LID, is not canonical and would otherwise stop
+// resolving.
 func GetActiveInstanceByPhoneNumber(phoneNumber string) (*Instance, error) {
+	var lastErr error = ErrNoActiveInstance
+
+	for _, candidate := range phoneLookupCandidates(phoneNumber) {
+		inst, err := getActiveInstanceByExactPhone(candidate)
+		if err == nil {
+			return inst, nil
+		}
+		if !errors.Is(err, ErrNoActiveInstance) {
+			return nil, err
+		}
+		lastErr = err
+	}
+
+	return nil, lastErr
+}
+
+// phoneLookupCandidates lists the stored values that may hold this number, the
+// canonical form first. The raw input is only added when it differs.
+func phoneLookupCandidates(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+
+	normalized, err := helper.NormalizePhone(trimmed)
+	if err != nil || normalized == trimmed {
+		return []string{trimmed}
+	}
+	return []string{normalized, trimmed}
+}
+
+func getActiveInstanceByExactPhone(phoneNumber string) (*Instance, error) {
 	query := `
         SELECT
             id,

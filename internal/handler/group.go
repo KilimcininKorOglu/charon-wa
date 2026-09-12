@@ -99,7 +99,7 @@ func GetGroupsByNumber(c echo.Context) error {
 	}
 
 	return SuccessResponse(c, 200, "Groups retrieved", map[string]any{
-		"from":   phoneNumber,
+		"from":   inst.PhoneNumber.String,
 		"total":  len(groupList),
 		"groups": groupList,
 	})
@@ -172,7 +172,7 @@ func SendGroupMessageByNumber(c echo.Context) error {
 	}
 
 	return SuccessResponse(c, 200, "Message sent to group", map[string]any{
-		"from":      phoneNumber,
+		"from":      inst.PhoneNumber.String,
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"groupJid":  req.GroupJID,
@@ -257,7 +257,7 @@ func SendGroupMediaByNumber(c echo.Context) error {
 	}
 
 	return SuccessResponse(c, 200, "Media sent to group", map[string]any{
-		"from":      phoneNumber,
+		"from":      inst.PhoneNumber.String,
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"groupJid":  groupJid,
@@ -347,7 +347,7 @@ func SendGroupMediaURLByNumber(c echo.Context) error {
 	}
 
 	return SuccessResponse(c, 200, "Media sent to group", map[string]any{
-		"from":      phoneNumber,
+		"from":      inst.PhoneNumber.String,
 		"messageId": resp.ID,
 		"timestamp": resp.Timestamp.Unix(),
 		"groupJid":  req.GroupJID,
