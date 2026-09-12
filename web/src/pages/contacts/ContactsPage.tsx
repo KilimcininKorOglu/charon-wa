@@ -17,6 +17,7 @@ import {
 import { PhoneInput } from "../../components/ui/PhoneInput"
 import api from "../../lib/api"
 import { apiFailure, isInvalidPhone } from "../../lib/apiError"
+import { formatPhoneDisplay } from "../../lib/phone"
 import type { ApiResponse, Instance, Contact } from "../../lib/types"
 import toast from "react-hot-toast"
 
@@ -135,7 +136,7 @@ export function ContactsPage() {
                 <select value={selectedInstance} onChange={(e) => { setSelectedInstance(e.target.value); setPage(1); setSelectedContact(null) }}
                   className="w-full bg-bg-input border border-border text-cyber-green px-3 py-2 text-xs font-mono focus:outline-none focus:border-cyber-green/50 appearance-none cursor-pointer">
                   <option value="">Select instance</option>
-                  {instances.map((inst) => <option key={inst.instanceId} value={inst.instanceId}>{inst.instanceId} {inst.phoneNumber ? `(${inst.phoneNumber})` : ""}</option>)}
+                  {instances.map((inst) => <option key={inst.instanceId} value={inst.instanceId}>{inst.instanceId} {inst.phoneNumber ? `(${formatPhoneDisplay(inst.phoneNumber)})` : ""}</option>)}
                 </select>
                 <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-cyber-green-muted pointer-events-none" />
               </div>
@@ -192,7 +193,7 @@ export function ContactsPage() {
                     <tr key={c.jid} onClick={() => handleSelectContact(c)}
                       className={`border-b border-border/50 hover:bg-bg-hover cursor-pointer transition-colors ${selectedContact?.jid === c.jid ? "bg-cyber-green/5" : ""}`}>
                       <td className="px-3 py-2 text-cyber-green">{c.name || "--"}</td>
-                      <td className="px-3 py-2 text-cyber-green font-mono">{c.phoneNumber}</td>
+                      <td className="px-3 py-2 text-cyber-green font-mono" title={c.phoneNumber}>{formatPhoneDisplay(c.phoneNumber)}</td>
                       <td className="px-3 py-2"><Badge variant={c.isGroup ? "info" : "muted"}>{c.isGroup ? "Group" : "Contact"}</Badge></td>
                     </tr>
                   ))}
@@ -222,7 +223,7 @@ export function ContactsPage() {
             </div>
             <div className="space-y-2 text-xs">
               <div><span className="text-cyber-green-muted">Name: </span><span className="text-cyber-green">{selectedContact.name || "--"}</span></div>
-              <div><span className="text-cyber-green-muted">Phone: </span><span className="text-cyber-green font-mono">{selectedContact.phoneNumber}</span></div>
+              <div><span className="text-cyber-green-muted">Phone: </span><span className="text-cyber-green font-mono" title={selectedContact.phoneNumber}>{formatPhoneDisplay(selectedContact.phoneNumber)}</span></div>
               <div><span className="text-cyber-green-muted">JID: </span><span className="text-cyber-green font-mono text-[10px]">{selectedContact.jid}</span></div>
               {selectedContact.pushName && <div><span className="text-cyber-green-muted">Push Name: </span><span className="text-cyber-green">{selectedContact.pushName}</span></div>}
               {selectedContact.businessName && <div><span className="text-cyber-green-muted">Business: </span><span className="text-cyber-green">{selectedContact.businessName}</span></div>}

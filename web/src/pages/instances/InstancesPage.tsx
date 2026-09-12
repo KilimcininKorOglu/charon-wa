@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import api from "../../lib/api"
 import { globalWs } from "../../lib/ws"
+import { formatPhoneDisplay } from "../../lib/phone"
 import type { ApiResponse, Instance, DeviceInfo, WsEvent } from "../../lib/types"
 import toast from "react-hot-toast"
 
@@ -235,7 +236,7 @@ export function InstancesPage() {
                     <div className="flex items-center gap-2 mt-0.5">
                       {statusBadge(inst)}
                       {inst.circle && <Badge variant="muted">{inst.circle}</Badge>}
-                      {inst.phoneNumber && <span className="text-xs text-cyber-green-muted">{inst.phoneNumber}</span>}
+                      {inst.phoneNumber && <span className="text-xs text-cyber-green-muted" title={inst.phoneNumber}>{formatPhoneDisplay(inst.phoneNumber)}</span>}
                     </div>
                   </div>
                 </div>
@@ -286,7 +287,7 @@ export function InstancesPage() {
               {selected.phoneNumber && (
                 <div>
                   <span className="text-cyber-green-muted">Phone: </span>
-                  <span className="text-cyber-green">{selected.phoneNumber}</span>
+                  <span className="text-cyber-green" title={selected.phoneNumber}>{formatPhoneDisplay(selected.phoneNumber)}</span>
                 </div>
               )}
             </div>
@@ -304,7 +305,7 @@ export function InstancesPage() {
                 </div>
                 <div>
                   <span className="text-cyber-green-muted">Phone: </span>
-                  <span className="text-cyber-green">{deviceInfo.phoneNumber}</span>
+                  <span className="text-cyber-green" title={deviceInfo.phoneNumber}>{formatPhoneDisplay(deviceInfo.phoneNumber)}</span>
                 </div>
               </div>
             )}

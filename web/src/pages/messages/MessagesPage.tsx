@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import api from "../../lib/api"
 import { apiFailure, isInvalidPhone } from "../../lib/apiError"
+import { formatPhoneDisplay } from "../../lib/phone"
 import type { ApiResponse, Instance, Contact, Group, WsEvent } from "../../lib/types"
 import toast from "react-hot-toast"
 
@@ -295,7 +296,7 @@ export function MessagesPage() {
               <select value={selectedInstance} onChange={(e) => { setSelectedInstance(e.target.value); setMessages([]); setRecipient(""); setRecipientName("") }}
                 className="w-full bg-bg-input border border-border text-cyber-green px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-cyber-green/50 appearance-none cursor-pointer">
                 <option value="">Select instance</option>
-                {instances.map((inst) => <option key={inst.instanceId} value={inst.instanceId}>{inst.instanceId} {inst.phoneNumber ? `(${inst.phoneNumber})` : ""}</option>)}
+                {instances.map((inst) => <option key={inst.instanceId} value={inst.instanceId}>{inst.instanceId} {inst.phoneNumber ? `(${formatPhoneDisplay(inst.phoneNumber)})` : ""}</option>)}
               </select>
               <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-cyber-green-muted pointer-events-none" />
             </div>
@@ -351,7 +352,7 @@ export function MessagesPage() {
                         <UserIcon size={12} className="text-cyber-green-muted shrink-0" />
                         <div className="min-w-0">
                           <p className="text-cyber-green truncate">{c.name || c.phoneNumber}</p>
-                          <p className="text-[10px] text-cyber-green-muted">{c.phoneNumber}</p>
+                          <p className="text-[10px] text-cyber-green-muted" title={c.phoneNumber}>{formatPhoneDisplay(c.phoneNumber)}</p>
                         </div>
                       </button>
                     ))}

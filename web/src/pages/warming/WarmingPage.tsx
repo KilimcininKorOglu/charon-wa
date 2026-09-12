@@ -10,6 +10,7 @@ import {
   Sparkles, LayoutTemplate, Edit3, Check, Save,
 } from "lucide-react"
 import api from "../../lib/api"
+import { formatPhoneDisplay } from "../../lib/phone"
 import type {
   ApiResponse, WarmingRoom, WarmingScript, WarmingLog,
   WarmingScriptLine, WarmingTemplate, Instance, CreateWarmingRoomRequest,
@@ -360,7 +361,7 @@ export function WarmingPage() {
                     <label className="text-xs text-cyber-green-dim uppercase tracking-wider block mb-1.5">Sender Instance</label>
                     <select value={roomForm.senderInstanceId} onChange={(e) => setRoomForm({ ...roomForm, senderInstanceId: e.target.value })} className={selCls}>
                       <option value="">Select</option>
-                      {instances.map(i => <option key={i.instanceId} value={i.instanceId}>{i.instanceId} {i.phoneNumber ? `(${i.phoneNumber})` : ""}</option>)}
+                      {instances.map(i => <option key={i.instanceId} value={i.instanceId}>{i.instanceId} {i.phoneNumber ? `(${formatPhoneDisplay(i.phoneNumber)})` : ""}</option>)}
                     </select>
                   </div>
                   <Button onClick={() => setWizardStep(2)} disabled={!roomForm.name || !roomForm.senderInstanceId}>Next</Button>

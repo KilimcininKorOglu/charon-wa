@@ -10,6 +10,7 @@ import {
   ChevronRight,
 } from "lucide-react"
 import api from "../../lib/api"
+import { formatPhoneDisplay } from "../../lib/phone"
 import type { ApiResponse, OutboxMessage } from "../../lib/types"
 import toast from "react-hot-toast"
 
@@ -130,7 +131,7 @@ export function OutboxPage() {
                     onClick={() => setSelected(msg)}
                     className={`border-b border-border/50 cursor-pointer transition-colors ${selected?.id_outbox === msg.id_outbox ? "bg-cyber-green/5" : "hover:bg-bg-hover"}`}>
                     <td className="px-3 py-2 text-cyber-green-muted">#{msg.id_outbox}</td>
-                    <td className="px-3 py-2 text-cyber-green font-mono">{msg.destination}</td>
+                    <td className="px-3 py-2 text-cyber-green font-mono" title={msg.destination}>{formatPhoneDisplay(msg.destination)}</td>
                     <td className="px-3 py-2 text-cyber-green-muted max-w-xs truncate">{msg.messages}</td>
                     <td className="px-3 py-2">{msg.application && <Badge variant="muted">{msg.application}</Badge>}</td>
                     <td className="px-3 py-2"><Badge variant={statusVariant(msg.status)}>{statusLabel(msg.status)}</Badge></td>
@@ -171,7 +172,7 @@ export function OutboxPage() {
               </div>
               <div>
                 <span className="text-cyber-green-muted">Destination: </span>
-                <span className="text-cyber-green font-mono">{selected.destination}</span>
+                <span className="text-cyber-green font-mono" title={selected.destination}>{formatPhoneDisplay(selected.destination)}</span>
               </div>
               {selected.from_number && (
                 <div>
