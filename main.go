@@ -322,6 +322,86 @@ func uploadSecurityHeaders(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
+// Cache-Control values, one per response class.
+const (
+	cacheImmutableAsset = "public, max-age=31536000, immutable"
+	cacheStaticFile     = "public, max-age=3600"
+	cacheSPAShell       = "public, max-age=300"
+	cachePrivateUpload  = "private, no-cache"
+	cacheNoStore        = "no-store"
+)
+
+// Paths that must never be stored: the health probe, the WebSocket upgrade and
+// the two authentication endpoints.
+var noStorePaths = map[string]bool{
+	"/":       true,
+	"/ws":     true,
+	"/login":  true,
+	"/logout": true,
+}
+
+// cacheControlForPath classifies a request path into a Cache-Control value.
+// Vite emits content-hashed names under /assets, so those are immutable. Every
+// unmatched path falls through to the SPA catch-all, which serves index.html.
+func cacheControlForPath(path string) string {
+	switch {
+	case strings.HasPrefix(path, "/assets/"):
+		return cacheImmutableAsset
+	case path == "/favicon.svg":
+		return cacheStaticFile
+	case strings.HasPrefix(path, "/uploads/"):
+		return cachePrivateUpload
+	case noStorePaths[path] || strings.HasPrefix(path, "/api/"):
+		return cacheNoStore
+	}
+	return cacheSPAShell
+}
+
+// cacheHeaders sets Cache-Control on every response. Only GET and HEAD are
+// cacheable; anything else is no-store. middleware.Gzip() already adds
+// Vary: Accept-Encoding, so this does not repeat it.
+func cacheHeaders(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		req := c.Request()
+		if req.Method != http.MethodGet && req.Method != http.MethodHead {
+			c.Response().Header().Set("Cache-Control", cacheNoStore)
+			return next(c)
+		}
+		c.Response().Header().Set("Cache-Control", cacheControlForPath(req.URL.Path))
+		return next(c)
+	}
+}
+
+// weakFileETag builds a validator from the file mtime and size. It is weak on
+// two counts: mtime plus size is not a bytewise identity proof, and
+// middleware.Gzip() re-encodes the body after the handler has run.
+func weakFileETag(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf(`W/"%x-%x"`, info.ModTime().UnixNano(), info.Size())
+}
+
+// serveCachedFile serves a file with a weak ETag. c.File delegates to
+// http.ServeContent, which answers If-None-Match (comma lists, "*" and weak
+// validators) and If-Modified-Since with 304 on its own.
+func serveCachedFile(c echo.Context, path string) error {
+	if etag := weakFileETag(path); etag != "" {
+		c.Response().Header().Set("ETag", etag)
+	}
+	return c.File(path)
+}
+
+// staticGetHead serves a directory tree on both GET and HEAD. e.Static
+// registers GET only, so a HEAD on a static path would answer 405 and defeat
+// cache revalidation by HEAD.
+func staticGetHead(e *echo.Echo, pathPrefix, fsRoot string) {
+	h := echo.StaticDirectoryHandler(echo.MustSubFS(e.Filesystem, fsRoot), false)
+	e.GET(pathPrefix+"*", h)
+	e.HEAD(pathPrefix+"*", h)
+}
+
 // setupCORS validates the allowed origins and installs the CORS middleware.
 // AllowCredentials is on, so the origin list must be explicit.
 func setupCORS(e *echo.Echo) {
@@ -407,6 +487,7 @@ func setupMiddleware(e *echo.Echo) echo.MiddlewareFunc {
 	}))
 	e.Use(middleware.BodyLimit("100M"))
 	e.Use(middleware.Gzip())
+	e.Use(cacheHeaders)
 	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
 		XFrameOptions:         "DENY",
 		ContentSecurityPolicy: "frame-ancestors 'none'",
@@ -465,7 +546,7 @@ func main() {
 
 	// Static file serving for uploaded files — with security headers to prevent MIME sniffing
 	e.Use(uploadSecurityHeaders)
-	e.Static("/uploads", "./uploads")
+	staticGetHead(e, "/uploads", "./uploads")
 
 	// WebSocket and health check
 	e.GET("/ws", handler.WebSocketHandler(hub)) // WebSocket listener (Gorilla)
@@ -659,11 +740,19 @@ func registerAPIRoutes(e *echo.Echo, api *echo.Group, hub *ws.Hub) {
 // registerSPARoutes serves the built frontend. The catch-all must be registered
 // last so it never shadows an API route.
 func registerSPARoutes(e *echo.Echo) {
-	e.Static("/assets", "./web/dist/assets")
-	e.File("/favicon.svg", "./web/dist/favicon.svg")
-	e.GET("/*", func(c echo.Context) error {
-		return c.File("./web/dist/index.html")
-	})
+	staticGetHead(e, "/assets", "./web/dist/assets")
+
+	favicon := func(c echo.Context) error {
+		return serveCachedFile(c, "./web/dist/favicon.svg")
+	}
+	e.GET("/favicon.svg", favicon)
+	e.HEAD("/favicon.svg", favicon)
+
+	shell := func(c echo.Context) error {
+		return serveCachedFile(c, "./web/dist/index.html")
+	}
+	e.GET("/*", shell)
+	e.HEAD("/*", shell)
 }
 
 // runServer starts the warming worker and the HTTP server, then blocks until a
