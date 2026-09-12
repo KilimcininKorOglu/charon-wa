@@ -103,19 +103,19 @@ func TestFormatPhoneNumber(t *testing.T) {
 			name:        "ID: leading 0 converted",
 			countryCode: "62",
 			input:       "08123456789",
-			wantUser:    "905123456789",
+			wantUser:    "628123456789",
 		},
 		{
 			name:        "ID: local without 0 converted",
 			countryCode: "62",
 			input:       "8123456789",
-			wantUser:    "905123456789",
+			wantUser:    "628123456789",
 		},
 		{
 			name:        "ID: full international unchanged",
 			countryCode: "62",
-			input:       "905123456789",
-			wantUser:    "905123456789",
+			input:       "628123456789",
+			wantUser:    "628123456789",
 		},
 	}
 
