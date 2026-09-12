@@ -12,7 +12,7 @@ RUN npm run build
 # ============================================
 # Stage 2: Go Build
 # ============================================
-FROM golang:1.26.6-bookworm AS builder
+FROM golang:1.27.1-bookworm AS builder
 
 WORKDIR /src
 

@@ -140,7 +140,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 
 | Component | Technology                                                   |
 |:----------|:-------------------------------------------------------------|
-| Language  | Go 1.26.6+                                                   |
+| Language  | Go 1.27.1+                                                   |
 | Framework | [Echo v4](https://echo.labstack.com/)                        |
 | WhatsApp  | [whatsmeow](https://github.com/tulir/whatsmeow)              |
 | Database  | PostgreSQL 13+                                               |
@@ -155,7 +155,7 @@ REST API for WhatsApp Web automation, multi-instance management, and real-time m
 
 ### Prerequisites
 
-- Go 1.26.6 or later
+- Go 1.27.1 or later
 - Node.js 22+ and npm (for frontend)
 - PostgreSQL 13 or later (the schema calls `gen_random_uuid()`, which is only built in from 13 onward)
 - Make (build tool)
@@ -588,7 +588,7 @@ docker run -d --name charon-worker \
 make build-all
 ```
 
-**Note:** Windows cross-compile is currently broken with Go 1.26 + zig (0.14–0.15): Go passes a `-tsaware` linker flag unsupported by zig. CI builds Linux only (amd64 + arm64). Release binaries for all platforms are produced by `goreleaser-cross` on tag pushes matching `v*`.
+**Note:** Windows cross-compile is currently broken with Go 1.26+ and zig (0.14–0.15): Go passes a `-tsaware` linker flag unsupported by zig. CI builds Linux only (amd64 + arm64). Release binaries for all platforms are produced by `goreleaser-cross` on tag pushes matching `v*`.
 
 ### Auto-migration
 

@@ -12,6 +12,10 @@
 - `POST /api/system/phone-config` (admin only) sets the deployment-wide default country from the System Settings page, without a restart; the value is stored in `system_settings` and wins over `PHONE_DEFAULT_REGION` on the next startup
 - `phone_default_region` on `PUT /api/me` lets a user preselect their own country in phone fields from the profile page; an empty value follows the system default again
 
+### Changed
+- Raise the Go toolchain to 1.27.1 in `go.mod` and in the `Dockerfile` build stage
+- Upgrade `goreleaser-cross` to `v1.27.1`, which carries Go 1.27.1; the release image no longer lags the module floor
+
 ### Fixed
 - The blast outbox worker rejected every destination that did not start with `62`, so a deployment configured for any other country could not send at all
 - `warming_rooms.whitelisted_number` was normalised on create but not on update, which silently broke auto-reply matching after an edit, and its normaliser was hardcoded to Indonesia

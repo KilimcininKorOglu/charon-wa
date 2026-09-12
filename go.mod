@@ -1,6 +1,6 @@
 module charon
 
-go 1.26.6
+go 1.27.1
 
 require (
 	github.com/disintegration/imaging v1.6.2
