@@ -260,7 +260,7 @@ func InitCustomSchema() {
 		ADD COLUMN IF NOT EXISTS reply_delay_max INT NOT NULL DEFAULT 60;
 		
 		COMMENT ON COLUMN warming_rooms.room_type IS 'BOT_VS_BOT: automated script exchange, HUMAN_VS_BOT: auto-reply to human';
-		COMMENT ON COLUMN warming_rooms.whitelisted_number IS 'Phone number allowed to trigger auto-reply (format: 905123456789)';
+		COMMENT ON COLUMN warming_rooms.whitelisted_number IS 'Number allowed to trigger auto-reply, in bare E.164 form without a leading + (any country), or a raw LID when LID-to-phone resolution failed';
 		COMMENT ON COLUMN warming_rooms.reply_delay_min IS 'Minimum delay in seconds before replying (HUMAN_VS_BOT mode)';
 		COMMENT ON COLUMN warming_rooms.reply_delay_max IS 'Maximum delay in seconds before replying (HUMAN_VS_BOT mode)';
 		

@@ -3,9 +3,11 @@ package warming
 import (
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
+	"charon/internal/helper"
 	"charon/internal/model"
 	warmingModel "charon/internal/model/warming"
 )
@@ -152,6 +154,45 @@ func validateBotVsBotRoom(req *warmingModel.CreateWarmingRoomRequest, userID int
 	return validateRoomInstance(req.ReceiverInstanceID, "receiver", userID, isAdmin)
 }
 
+// normalizeWhitelistedNumber rewrites the whitelisted number into its canonical
+// bare E.164 form, in place. Auto-reply matching compares this value against an
+// incoming message's sender verbatim, so create and update must produce exactly
+// the same shape.
+//
+// A value that cannot be parsed as a phone number but is all digits is kept
+// verbatim: an operator pastes a raw LID here when LID to phone-number
+// resolution fails, and that LID is the only way the room can work.
+func normalizeWhitelistedNumber(number *string) error {
+	trimmed := strings.TrimSpace(*number)
+
+	normalized, err := helper.NormalizePhone(trimmed)
+	if err == nil {
+		*number = normalized
+		return nil
+	}
+
+	if isAllDigits(trimmed) {
+		log.Printf("warming: whitelisted number %s is not a valid phone number, keeping it verbatim (LID?): %v",
+			helper.SanitizeLogValue(trimmed), err)
+		*number = trimmed
+		return nil
+	}
+
+	return fmt.Errorf("invalid whitelisted_number: %w", err)
+}
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // validateHumanVsBotRoom checks the bot side of a HUMAN_VS_BOT room and applies
 // its reply delay defaults. The human is the receiver, so the receiver instance
 // is cleared.
@@ -161,6 +202,9 @@ func validateHumanVsBotRoom(req *warmingModel.CreateWarmingRoomRequest, userID i
 	}
 	if strings.TrimSpace(req.WhitelistedNumber) == "" {
 		return errors.New("whitelisted_number is required for HUMAN_VS_BOT")
+	}
+	if err := normalizeWhitelistedNumber(&req.WhitelistedNumber); err != nil {
+		return err
 	}
 	if err := validateRoomInstance(req.SenderInstanceID, "sender", userID, isAdmin); err != nil {
 		return err
@@ -285,6 +329,19 @@ func resolveUpdateRoomType(id, requested string) (string, error) {
 	return existingRoom.RoomType, nil
 }
 
+// validateHumanVsBotUpdate applies the HUMAN_VS_BOT checks of the update path.
+// It is the update-side counterpart of validateHumanVsBotRoom, so both paths
+// normalise the whitelisted number the same way.
+func validateHumanVsBotUpdate(req *warmingModel.UpdateWarmingRoomRequest) error {
+	if strings.TrimSpace(req.WhitelistedNumber) == "" {
+		return errors.New("whitelisted_number is required for HUMAN_VS_BOT")
+	}
+	if err := normalizeWhitelistedNumber(&req.WhitelistedNumber); err != nil {
+		return err
+	}
+	return normalizeReplyDelays(&req.ReplyDelayMin, &req.ReplyDelayMax)
+}
+
 // validateUpdateRoomRequest runs every check the update path needs and applies
 // the request defaults in place.
 func validateUpdateRoomRequest(id string, req *warmingModel.UpdateWarmingRoomRequest, userID int64, isAdmin bool) error {
@@ -305,10 +362,7 @@ func validateUpdateRoomRequest(id string, req *warmingModel.UpdateWarmingRoomReq
 	}
 
 	if req.RoomType == "HUMAN_VS_BOT" {
-		if strings.TrimSpace(req.WhitelistedNumber) == "" {
-			return errors.New("whitelisted_number is required for HUMAN_VS_BOT")
-		}
-		if err := normalizeReplyDelays(&req.ReplyDelayMin, &req.ReplyDelayMax); err != nil {
+		if err := validateHumanVsBotUpdate(req); err != nil {
 			return err
 		}
 	}

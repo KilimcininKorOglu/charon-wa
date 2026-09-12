@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -156,29 +155,12 @@ func CheckDuplicateWhitelistedNumber(whitelistedNumber string, excludeRoomID *uu
 
 // CreateWarmingRoom inserts new room
 func CreateWarmingRoom(req *CreateWarmingRoomRequest, userID int64) (*WarmingRoom, error) {
-	// Normalize whitelisted number for HUMAN_VS_BOT rooms (08xxx -> 905xxx)
+	// The number arrives already normalised from the service layer, which is
+	// the single place that decides its canonical form for both create and
+	// update.
 	if req.RoomType == "HUMAN_VS_BOT" && req.WhitelistedNumber != "" {
-		// Use existing FormatPhoneNumber logic to normalize
-		cleaned := strings.ReplaceAll(req.WhitelistedNumber, " ", "")
-		cleaned = strings.ReplaceAll(cleaned, "-", "")
-		cleaned = strings.TrimPrefix(cleaned, "+")
-
-		// Convert 08xxx to 905xxx
-		if strings.HasPrefix(cleaned, "08") {
-			cleaned = "62" + cleaned[1:]
-		} else if strings.HasPrefix(cleaned, "8") && !strings.HasPrefix(cleaned, "62") {
-			cleaned = "62" + cleaned
-		}
-
-		req.WhitelistedNumber = cleaned
-
-		// Check for duplicate whitelisted number
-		isDuplicate, err := CheckDuplicateWhitelistedNumber(req.WhitelistedNumber, nil)
-		if err != nil {
+		if err := ensureWhitelistedNumberFree(req.WhitelistedNumber, nil, ""); err != nil {
 			return nil, err
-		}
-		if isDuplicate {
-			return nil, fmt.Errorf("whitelisted number %s is already used in another active HUMAN_VS_BOT room", req.WhitelistedNumber)
 		}
 	}
 
