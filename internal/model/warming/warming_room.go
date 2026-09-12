@@ -336,7 +336,7 @@ func GetAllWarmingRooms(status string, userID int64, isAdmin bool) ([]WarmingRoo
 		rooms = append(rooms, room)
 	}
 
-	return rooms, nil
+	return rooms, rows.Err()
 }
 
 // GetWarmingRoomByID retrieves single room by ID
@@ -396,6 +396,39 @@ func GetWarmingRoomByID(id string) (*WarmingRoom, error) {
 	return room, nil
 }
 
+// valueOr returns the pointed-to value, or fallback when the pointer is nil.
+func valueOr[T any](ptr *T, fallback T) T {
+	if ptr == nil {
+		return fallback
+	}
+	return *ptr
+}
+
+// requireAffectedRoom turns an empty update into the shared "not found" error.
+func requireAffectedRoom(result sql.Result) error {
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("warming room not found")
+	}
+	return nil
+}
+
+// ensureWhitelistedNumberFree rejects a number already bound to another active
+// HUMAN_VS_BOT room.
+func ensureWhitelistedNumberFree(number string, roomID *uuid.UUID, context string) error {
+	isDuplicate, err := CheckDuplicateWhitelistedNumber(number, roomID)
+	if err != nil {
+		return err
+	}
+	if isDuplicate {
+		return fmt.Errorf("%swhitelisted number %s is already used in another active HUMAN_VS_BOT room", context, number)
+	}
+	return nil
+}
+
 // UpdateWarmingRoom updates existing room
 func UpdateWarmingRoom(id string, req *UpdateWarmingRoomRequest) error {
 	roomID, err := uuid.Parse(id)
@@ -405,12 +438,8 @@ func UpdateWarmingRoom(id string, req *UpdateWarmingRoomRequest) error {
 
 	// Check for duplicate whitelisted number if updating HUMAN_VS_BOT room
 	if req.RoomType == "HUMAN_VS_BOT" && req.WhitelistedNumber != "" {
-		isDuplicate, err := CheckDuplicateWhitelistedNumber(req.WhitelistedNumber, &roomID)
-		if err != nil {
+		if err := ensureWhitelistedNumberFree(req.WhitelistedNumber, &roomID, ""); err != nil {
 			return err
-		}
-		if isDuplicate {
-			return fmt.Errorf("whitelisted number %s is already used in another active HUMAN_VS_BOT room", req.WhitelistedNumber)
 		}
 	}
 
@@ -424,27 +453,6 @@ func UpdateWarmingRoom(id string, req *UpdateWarmingRoomRequest) error {
 		WHERE id = $17
 	`
 
-	// Handle nullable AI fields with defaults
-	aiEnabled := false
-	if req.AIEnabled != nil {
-		aiEnabled = *req.AIEnabled
-	}
-
-	aiTemperature := 0.7
-	if req.AITemperature != nil {
-		aiTemperature = *req.AITemperature
-	}
-
-	aiMaxTokens := 150
-	if req.AIMaxTokens != nil {
-		aiMaxTokens = *req.AIMaxTokens
-	}
-
-	fallbackToScript := true
-	if req.FallbackToScript != nil {
-		fallbackToScript = *req.FallbackToScript
-	}
-
 	result, err := database.AppDB.Exec(
 		query,
 		req.Name,
@@ -456,29 +464,20 @@ func UpdateWarmingRoom(id string, req *UpdateWarmingRoomRequest) error {
 		sql.NullString{String: req.WhitelistedNumber, Valid: req.WhitelistedNumber != ""},
 		req.ReplyDelayMin,
 		req.ReplyDelayMax,
-		aiEnabled,
+		valueOr(req.AIEnabled, false),
 		req.AIProvider,
 		req.AIModel,
 		req.AISystemPrompt,
-		aiTemperature,
-		aiMaxTokens,
-		fallbackToScript,
+		valueOr(req.AITemperature, 0.7),
+		valueOr(req.AIMaxTokens, 150),
+		valueOr(req.FallbackToScript, true),
 		roomID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update warming room: %w", err)
 	}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rows == 0 {
-		return fmt.Errorf("warming room not found")
-	}
-
-	return nil
+	return requireAffectedRoom(result)
 }
 
 // DeleteWarmingRoom deletes room by ID (CASCADE to warming_logs)
@@ -495,16 +494,7 @@ func DeleteWarmingRoom(id string) error {
 		return fmt.Errorf("failed to delete warming room: %w", err)
 	}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rows == 0 {
-		return fmt.Errorf("warming room not found")
-	}
-
-	return nil
+	return requireAffectedRoom(result)
 }
 
 // CheckRoomOwnership validates if user owns the room (Admin bypass)
@@ -538,58 +528,51 @@ func UpdateRoomStatus(id string, status string, nextRunAt *time.Time) error {
 		return fmt.Errorf("invalid room ID format: %w", err)
 	}
 
-	// If activating a HUMAN_VS_BOT room, check for duplicate whitelisted number
 	if status == "ACTIVE" {
-		room, err := GetWarmingRoomByID(id)
-		if err != nil {
-			return fmt.Errorf("failed to get room: %w", err)
-		}
-
-		if room.RoomType == "HUMAN_VS_BOT" && room.WhitelistedNumber.Valid && room.WhitelistedNumber.String != "" {
-			isDuplicate, err := CheckDuplicateWhitelistedNumber(room.WhitelistedNumber.String, &roomID)
-			if err != nil {
-				return err
-			}
-			if isDuplicate {
-				return fmt.Errorf("cannot activate room: whitelisted number %s is already used in another active HUMAN_VS_BOT room", room.WhitelistedNumber.String)
-			}
+		if err := checkActivationWhitelist(id, roomID); err != nil {
+			return err
 		}
 	}
 
-	var query string
-	var args []any
-
-	if nextRunAt != nil {
-		query = `
-			UPDATE warming_rooms
-			SET status = $1, next_run_at = $2, updated_at = NOW()
-			WHERE id = $3
-		`
-		args = []any{status, nextRunAt, roomID}
-	} else {
-		query = `
-			UPDATE warming_rooms
-			SET status = $1, next_run_at = NULL, updated_at = NOW()
-			WHERE id = $2
-		`
-		args = []any{status, roomID}
-	}
+	query, args := roomStatusUpdate(status, roomID, nextRunAt)
 
 	result, err := database.AppDB.Exec(query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to update room status: %w", err)
 	}
 
-	rows, err := result.RowsAffected()
+	return requireAffectedRoom(result)
+}
+
+// checkActivationWhitelist blocks activating a HUMAN_VS_BOT room whose
+// whitelisted number is already claimed by another active room.
+func checkActivationWhitelist(id string, roomID uuid.UUID) error {
+	room, err := GetWarmingRoomByID(id)
 	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
+		return fmt.Errorf("failed to get room: %w", err)
 	}
 
-	if rows == 0 {
-		return fmt.Errorf("warming room not found")
+	if room.RoomType != "HUMAN_VS_BOT" || room.WhitelistedNumber.String == "" {
+		return nil
 	}
+	return ensureWhitelistedNumberFree(room.WhitelistedNumber.String, &roomID, "cannot activate room: ")
+}
 
-	return nil
+// roomStatusUpdate builds the status update statement. A nil nextRunAt clears
+// the column instead of writing a value.
+func roomStatusUpdate(status string, roomID uuid.UUID, nextRunAt *time.Time) (string, []any) {
+	if nextRunAt != nil {
+		return `
+			UPDATE warming_rooms
+			SET status = $1, next_run_at = $2, updated_at = NOW()
+			WHERE id = $3
+		`, []any{status, nextRunAt, roomID}
+	}
+	return `
+		UPDATE warming_rooms
+		SET status = $1, next_run_at = NULL, updated_at = NOW()
+		WHERE id = $2
+	`, []any{status, roomID}
 }
 
 func ToWarmingRoomResponse(room WarmingRoom) WarmingRoomResponse {
@@ -738,7 +721,7 @@ func GetActiveRoomsForWorker(limit int) ([]WarmingRoom, error) {
 		rooms = append(rooms, room)
 	}
 
-	return rooms, nil
+	return rooms, rows.Err()
 }
 
 // UpdateRoomProgress updates room current sequence and next run time
