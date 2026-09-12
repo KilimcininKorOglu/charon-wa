@@ -1,0 +1,11 @@
+version: "2"
+
+linters:
+  exclusions:
+    # These directories hold .go files that belong to npm packages, not to this
+    # module. Go's package loader does not skip a directory named node_modules,
+    # so `./...` pulls them in and every linter reports third-party code that an
+    # `npm install` would restore anyway.
+    paths:
+      - web/node_modules
+      - docker-data
