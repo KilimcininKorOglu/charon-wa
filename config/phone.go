@@ -5,14 +5,47 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/nyaruka/phonenumbers/v2"
 )
 
-// PhoneDefaultRegion is the ISO 3166-1 alpha-2 region libphonenumber parses a
+// phoneDefaultRegion is the ISO 3166-1 alpha-2 region libphonenumber parses a
 // local-format number against, for example "TR" or "ID". An empty value means
 // every number must arrive in full international format with a leading "+".
-var PhoneDefaultRegion string
+//
+// Unlike the other tunables it changes after startup, because an admin can set
+// it from the settings page, so it is guarded and reached through PhoneRegion.
+var (
+	phoneRegionMu      sync.RWMutex
+	phoneDefaultRegion string
+)
+
+// PhoneRegion returns the region the parser currently uses.
+func PhoneRegion() string {
+	phoneRegionMu.RLock()
+	defer phoneRegionMu.RUnlock()
+	return phoneDefaultRegion
+}
+
+// SetPhoneRegion replaces the region the parser uses. An unsupported code is
+// refused, so a bad value cannot silently turn every national number invalid.
+func SetPhoneRegion(region string) bool {
+	normalized := strings.ToUpper(strings.TrimSpace(region))
+	if normalized != "" && !IsSupportedRegion(normalized) {
+		return false
+	}
+
+	phoneRegionMu.Lock()
+	defer phoneRegionMu.Unlock()
+	phoneDefaultRegion = normalized
+	return true
+}
+
+// IsSupportedRegion reports whether libphonenumber knows this region code.
+func IsSupportedRegion(region string) bool {
+	return phonenumbers.GetSupportedRegions()[strings.ToUpper(strings.TrimSpace(region))]
+}
 
 // SkipWhatsAppRegistrationCheck turns off the IsOnWhatsApp lookup before a send.
 var SkipWhatsAppRegistrationCheck bool
@@ -25,10 +58,10 @@ var PhoneCountryCode string
 // it, so the API and the worker always classify a number the same way.
 func LoadPhoneConfig() {
 	PhoneCountryCode = strings.TrimSpace(os.Getenv("PHONE_COUNTRY_CODE"))
-	PhoneDefaultRegion = resolvePhoneRegion()
+	SetPhoneRegion(resolvePhoneRegion())
 	SkipWhatsAppRegistrationCheck = resolveSkipRegistrationCheck()
 
-	if PhoneDefaultRegion == "" {
+	if PhoneRegion() == "" {
 		log.Println("PHONE_DEFAULT_REGION is empty: every phone number must be in full international format with a leading +")
 	}
 }
@@ -38,9 +71,12 @@ func LoadPhoneConfig() {
 func resolvePhoneRegion() string {
 	raw := strings.ToUpper(strings.TrimSpace(os.Getenv("PHONE_DEFAULT_REGION")))
 	if raw != "" {
-		if phonenumbers.GetSupportedRegions()[raw] {
+		if IsSupportedRegion(raw) {
 			return raw
 		}
+		// raw comes from PHONE_DEFAULT_REGION, an operator-set environment
+		// variable read once at startup, never from a request.
+		// #nosec G706
 		log.Printf("PHONE_DEFAULT_REGION=%q is not a supported region code; falling back to international-only numbers", raw)
 		return ""
 	}

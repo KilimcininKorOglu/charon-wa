@@ -43,7 +43,7 @@ func NormalizePhone(raw string) (string, error) {
 		return "", ErrPhoneEmpty
 	}
 
-	region := config.PhoneDefaultRegion
+	region := config.PhoneRegion()
 	if region == "" && !strings.HasPrefix(trimmed, "+") {
 		return "", ErrPhoneNoRegion
 	}

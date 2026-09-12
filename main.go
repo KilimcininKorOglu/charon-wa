@@ -114,11 +114,37 @@ func loadAIConfig() {
 	config.AIDefaultMaxTokens = helper.GetEnvAsPositiveInt("AI_DEFAULT_MAX_TOKENS", 150)
 }
 
+// applyStoredPhoneRegion overrides the region loaded from the environment with
+// the one an admin set from the settings page. PHONE_DEFAULT_REGION stays the
+// fallback for a deployment that has never set one. A read failure is not
+// fatal: the parser keeps the environment value.
+func applyStoredPhoneRegion() {
+	stored, found, err := model.GetPhoneConfig()
+	if err != nil {
+		log.Printf("Warning: Failed to read the stored phone configuration: %v", err)
+		return
+	}
+	if !found {
+		return
+	}
+
+	if !config.SetPhoneRegion(stored.DefaultRegion) {
+		log.Printf("Warning: Stored phone region %q is not a supported region code; keeping %q",
+			stored.DefaultRegion, config.PhoneRegion())
+		return
+	}
+	log.Printf("Phone default region set from the database: %q", config.PhoneRegion())
+}
+
 // bootstrapRuntime applies the schema, seeds the admin user and restores the
 // stored WhatsApp devices. Neither the seed nor the restore is fatal.
 func bootstrapRuntime() {
 	log.Println("Ensuring database schema...")
 	helper.InitCustomSchema()
+
+	// The stored region wins over the environment, so it must be applied before
+	// the backfill normalises anything with it.
+	applyStoredPhoneRegion()
 
 	// Runs before the device loader, which writes instances.phone_number.
 	helper.RunPhoneBackfill()
@@ -577,9 +603,10 @@ func registerAPIRoutes(e *echo.Echo, api *echo.Group, hub *ws.Hub) {
 	// =====================================================
 	// SYSTEM IDENTITY ROUTES (Admin Only)
 	// =====================================================
-	api.GET("/system/identity", handler.GetSystemIdentityHandler)                                 // Publicly accessible via API token
-	api.POST("/system/identity", handler.UpdateSystemIdentityFull, customMiddleware.RequireAdmin) // Unified: Text + Logos (Admin Only)
-	api.GET("/system/phone-config", handler.GetPhoneConfigHandler)                                // Read-only: the region the parser uses
+	api.GET("/system/identity", handler.GetSystemIdentityHandler)                                     // Publicly accessible via API token
+	api.POST("/system/identity", handler.UpdateSystemIdentityFull, customMiddleware.RequireAdmin)     // Unified: Text + Logos (Admin Only)
+	api.GET("/system/phone-config", handler.GetPhoneConfigHandler)                                    // The region the parser uses
+	api.POST("/system/phone-config", handler.UpdatePhoneConfigHandler, customMiddleware.RequireAdmin) // Deployment-wide, admin only
 
 	// =====================================================
 	// ADMIN ROUTES (Admin Only)

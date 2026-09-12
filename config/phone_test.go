@@ -28,8 +28,8 @@ func TestLoadPhoneConfigRegion(t *testing.T) {
 
 			LoadPhoneConfig()
 
-			if PhoneDefaultRegion != tt.want {
-				t.Errorf("PhoneDefaultRegion = %q, want %q", PhoneDefaultRegion, tt.want)
+			if PhoneRegion() != tt.want {
+				t.Errorf("PhoneRegion() = %q, want %q", PhoneRegion(), tt.want)
 			}
 		})
 	}

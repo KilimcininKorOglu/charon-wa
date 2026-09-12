@@ -11,9 +11,9 @@ import (
 // single subtest.
 func setRegion(t *testing.T, region string) {
 	t.Helper()
-	previous := config.PhoneDefaultRegion
-	config.PhoneDefaultRegion = region
-	t.Cleanup(func() { config.PhoneDefaultRegion = previous })
+	previous := config.PhoneRegion()
+	config.SetPhoneRegion(region)
+	t.Cleanup(func() { config.SetPhoneRegion(previous) })
 }
 
 func TestExtractPhoneFromJID(t *testing.T) {

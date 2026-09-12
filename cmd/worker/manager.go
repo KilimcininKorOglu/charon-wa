@@ -38,6 +38,7 @@ func (m *WorkerManager) Start() {
 	}
 
 	// Initial load
+	refreshPhoneRegion(m.ctx)
 	m.reloadConfigs()
 
 	// Periodic reload every 30 seconds
@@ -47,6 +48,7 @@ func (m *WorkerManager) Start() {
 		for {
 			select {
 			case <-ticker.C:
+				refreshPhoneRegion(m.ctx)
 				m.reloadConfigs()
 			case <-reaper.C:
 				if n, err := ReapStaleClaims(m.ctx, 10*time.Minute); err != nil {
